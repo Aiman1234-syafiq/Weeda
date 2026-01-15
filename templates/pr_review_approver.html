@@ -1,0 +1,462 @@
+{% extends "base.html" %}
+
+{% block title %}Review PR - {{ pr.pr_no }}{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <div>
+        <h1 class="page-title">
+            <i class="fas fa-eye" style="color: var(--primary-600);"></i>
+            Review Purchase Requisition
+        </h1>
+        <p class="page-subtitle">
+            PR {{ pr.pr_no }} • {{ pr.requester_name_full }} • {{ pr.department }} Department
+        </p>
+    </div>
+    <div class="action-buttons">
+        <a href="/approve" class="btn btn-secondary">
+            <i class="fas fa-arrow-left"></i> Back to Approvals
+        </a>
+    </div>
+</div>
+
+<!-- PR Summary Card -->
+<div class="card mb-4">
+    <div class="card-header" style="background: linear-gradient(135deg, var(--primary-600), var(--primary-700)); color: white;">
+        <h3 class="card-title" style="color: white;">
+            <i class="fas fa-file-invoice-dollar"></i>
+            PR Summary
+        </h3>
+        <div>
+            <span class="status-badge" style="background: rgba(255, 255, 255, 0.2); color: white; border: 1px solid rgba(255, 255, 255, 0.3);">
+                PENDING YOUR APPROVAL
+            </span>
+        </div>
+    </div>
+    <div style="padding: 1.5rem;">
+        <div class="form-row">
+            <div class="form-group">
+                <label class="form-label">PR Number</label>
+                <div style="font-size: 1.5rem; font-weight: 700; color: var(--primary-700);">
+                    {{ pr.pr_no }}
+                </div>
+            </div>
+            
+            <div class="form-group">
+                <label class="form-label">Request Date</label>
+                <div>{{ pr.created_at[:10] }}</div>
+                <div class="text-muted">{{ pr.created_at[11:16] }}</div>
+            </div>
+            
+            <div class="form-group">
+                <label class="form-label">Requester</label>
+                <div>{{ pr.requester_name_full }}</div>
+                <div class="text-muted">{{ pr.department }}</div>
+            </div>
+            
+            <div class="form-group">
+                <label class="form-label">Total Amount</label>
+                <div style="font-size: 1.5rem; font-weight: 700; color: var(--danger);">
+                    RM {{ "%.2f"|format(pr.total_amount) }}
+                </div>
+                <div class="text-muted">{{ pr.currency }}</div>
+            </div>
+        </div>
+        
+        <div class="form-group">
+            <label class="form-label">Purpose</label>
+            <div style="background: var(--gray-50); padding: 1rem; border-radius: 8px; line-height: 1.6;">
+                {{ pr.purpose }}
+            </div>
+        </div>
+        
+        <!-- Budget Status -->
+        {% if pr.budget_status != 'IN_BUDGET' %}
+        <div class="form-group">
+            <label class="form-label">Budget Status</label>
+            <div class="budget-warning">
+                <div style="display: flex; align-items: center; gap: 1rem;">
+                    <i class="fas fa-exclamation-triangle" style="color: var(--warning);"></i>
+                    <div>
+                        <strong>Budget Exception {{ 'Approved' if pr.budget_status == 'EXCEPTION_APPROVED' else 'Required' }}</strong>
+                        {% if pr.budget_exception_notes %}
+                        <p style="margin: 0.5rem 0 0; font-size: 0.875rem;">
+                            {{ pr.budget_exception_notes }}
+                        </p>
+                        {% endif %}
+                    </div>
+                </div>
+            </div>
+        </div>
+        {% endif %}
+    </div>
+</div>
+
+<!-- Items List -->
+<div class="card mb-4">
+    <div class="card-header">
+        <h3 class="card-title">
+            <i class="fas fa-list-ol"></i>
+            Purchase Items ({{ items|length }} items)
+        </h3>
+    </div>
+    <div class="table-responsive">
+        <table class="table">
+            <thead>
+                <tr>
+                    <th>#</th>
+                    <th>Description</th>
+                    <th>Specifications</th>
+                    <th>Qty</th>
+                    <th>Unit Price</th>
+                    <th>Total</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for item in items %}
+                <tr>
+                    <td>{{ item.item_no }}</td>
+                    <td>
+                        <strong>{{ item.item_description }}</strong>
+                        {% if item.catalog_number %}
+                        <br>
+                        <small class="text-muted">Catalog #: {{ item.catalog_number }}</small>
+                        {% endif %}
+                    </td>
+                    <td>{{ item.specifications or '-' }}</td>
+                    <td>{{ item.quantity }} {{ item.unit_of_measure }}</td>
+                    <td>RM {{ "%.2f"|format(item.unit_price) }}</td>
+                    <td><strong>RM {{ "%.2f"|format(item.total_price) }}</strong></td>
+                </tr>
+                {% endfor %}
+                {% if pr.tax_amount > 0 %}
+                <tr>
+                    <td colspan="5" style="text-align: right; font-weight: 600;">Subtotal:</td>
+                    <td>RM {{ "%.2f"|format(pr.total_amount - pr.tax_amount) }}</td>
+                </tr>
+                <tr>
+                    <td colspan="5" style="text-align: right; font-weight: 600;">Tax ({{ (pr.tax_amount/(pr.total_amount - pr.tax_amount)*100 if pr.total_amount > pr.tax_amount else 0)|round(1) }}%):</td>
+                    <td>RM {{ "%.2f"|format(pr.tax_amount) }}</td>
+                </tr>
+                {% endif %}
+                <tr style="background: var(--gray-50);">
+                    <td colspan="5" style="text-align: right; font-weight: 600; font-size: 1.1rem;">Grand Total:</td>
+                    <td style="font-size: 1.25rem; font-weight: 700; color: var(--danger);">
+                        RM {{ "%.2f"|format(pr.grand_total or pr.total_amount) }}
+                    </td>
+                </tr>
+            </tbody>
+        </table>
+    </div>
+</div>
+
+<!-- Vendor Information -->
+<div class="card mb-4">
+    <div class="card-header">
+        <h3 class="card-title">
+            <i class="fas fa-building"></i>
+            Vendor & Delivery Information
+        </h3>
+    </div>
+    <div style="padding: 1.5rem;">
+        <div class="form-row">
+            <div class="form-group">
+                <label class="form-label">Vendor Name</label>
+                <div>{{ pr.vendor_name }}</div>
+                {% if pr.vendor_code %}
+                <div class="text-muted">Code: {{ pr.vendor_code }}</div>
+                {% endif %}
+            </div>
+            
+            <div class="form-group">
+                <label class="form-label">Vendor Contact</label>
+                <div>{{ pr.vendor_contact or 'Not specified' }}</div>
+            </div>
+            
+            <div class="form-group">
+                <label class="form-label">Payment Terms</label>
+                <div>{{ pr.payment_terms or 'NET 30' }}</div>
+            </div>
+        </div>
+        
+        {% if pr.delivery_address %}
+        <div class="form-group">
+            <label class="form-label">Delivery Address</label>
+            <div style="background: var(--gray-50); padding: 1rem; border-radius: 8px;">
+                {{ pr.delivery_address }}
+            </div>
+        </div>
+        {% endif %}
+    </div>
+</div>
+
+<!-- Approval History -->
+{% if history %}
+<div class="card mb-4">
+    <div class="card-header">
+        <h3 class="card-title">
+            <i class="fas fa-history"></i>
+            Approval History
+        </h3>
+    </div>
+    <div style="padding: 1.5rem;">
+        <div style="max-height: 300px; overflow-y: auto;">
+            {% for record in history %}
+            <div style="padding: 1rem; border-bottom: 1px solid var(--gray-200); {% if not loop.last %}margin-bottom: 0.5rem;{% endif %}">
+                <div style="display: flex; justify-content: space-between; align-items: flex-start;">
+                    <div>
+                        <div style="display: flex; align-items: center; gap: 0.75rem; margin-bottom: 0.5rem;">
+                            <div style="width: 32px; height: 32px; border-radius: 50%; 
+                                        background: {% if record.action == 'APPROVE' %}var(--success){% elif record.action == 'REJECT' %}var(--danger){% else %}var(--warning){% endif %}; 
+                                        display: flex; align-items: center; justify-content: center; color: white;">
+                                <i class="fas fa-{% if record.action == 'APPROVE' %}check{% elif record.action == 'REJECT' %}times{% else %}info{% endif %}"></i>
+                            </div>
+                            <div>
+                                <strong>{{ record.action|replace('_', ' ')|title }}</strong>
+                                <div class="text-muted" style="font-size: 0.875rem;">
+                                    by {{ record.approver_name or record.approver_role|title }}
+                                </div>
+                            </div>
+                        </div>
+                        
+                        {% if record.comments %}
+                        <div style="margin-left: 3.25rem; font-size: 0.875rem; color: var(--gray-700);">
+                            {{ record.comments }}
+                        </div>
+                        {% endif %}
+                    </div>
+                    
+                    <div class="text-muted" style="font-size: 0.75rem; white-space: nowrap;">
+                        {{ record.action_date[:16] }}
+                    </div>
+                </div>
+            </div>
+            {% endfor %}
+        </div>
+    </div>
+</div>
+{% endif %}
+
+<!-- Approval Decision Form -->
+<div class="card">
+    <div class="card-header">
+        <h3 class="card-title">
+            <i class="fas fa-gavel"></i>
+            Your Decision
+        </h3>
+    </div>
+    
+    <form method="POST" action="/approve/{{ pr.id }}/approve" id="approvalForm">
+        <div style="padding: 1.5rem;">
+            <div class="form-group">
+                <label for="comments" class="form-label">
+                    Comments / Notes
+                    <span class="text-muted">(Optional but recommended)</span>
+                </label>
+                <textarea class="form-control" id="comments" name="comments" 
+                          rows="4" placeholder="Provide comments for your decision..."></textarea>
+                <div class="form-text">
+                    Your comments will be recorded in the approval history and visible to the requester.
+                </div>
+            </div>
+            
+            <!-- Approval Path Information -->
+            <div class="form-group">
+                <div class="budget-info">
+                    <div style="display: flex; justify-content: space-between; align-items: center;">
+                        <div>
+                            <strong>Current Approval Stage</strong>
+                            <p style="margin: 0.5rem 0 0; font-size: 0.875rem;">
+                                You are: <strong>{{ session.role|upper }}</strong>
+                                {% if pr.total_amount <= 10000 %}
+                                • Final approver for amounts ≤ RM10,000
+                                {% elif pr.total_amount <= 50000 and session.role == 'approver2' %}
+                                • Next: Approver 3 (Group CEO)
+                                {% elif pr.total_amount <= 50000 and session.role == 'approver3' %}
+                                • Final approver for amounts RM11,000-49,999
+                                {% elif pr.total_amount > 50000 %}
+                                • Final approver for amounts ≥ RM50,000
+                                {% endif %}
+                            </p>
+                        </div>
+                        <div style="text-align: right;">
+                            <div style="font-size: 0.875rem;">Amount Threshold</div>
+                            <div style="font-size: 1.25rem; font-weight: 600;">
+                                {% if pr.total_amount <= 10000 %}
+                                ≤ RM10,000
+                                {% elif pr.total_amount <= 50000 %}
+                                RM11,000-49,999
+                                {% else %}
+                                ≥ RM50,000
+                                {% endif %}
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <div class="card-footer" style="padding: 1.5rem; background: var(--gray-50); 
+                                        display: flex; justify-content: space-between; align-items: center;">
+            <div>
+                <strong>Your Role:</strong>
+                <span class="user-badge" style="margin-left: 0.5rem;">
+                    {{ session.role|upper }}
+                </span>
+            </div>
+            
+            <div class="action-buttons">
+                <button type="button" class="btn btn-danger"
+                        onclick="showRejectModal()">
+                    <i class="fas fa-times"></i> Reject
+                </button>
+                
+                <button type="button" class="btn btn-warning"
+                        onclick="showReturnModal()">
+                    <i class="fas fa-undo"></i> Return
+                </button>
+                
+                <button type="submit" class="btn btn-success">
+                    <i class="fas fa-check"></i> Approve
+                </button>
+            </div>
+        </div>
+    </form>
+</div>
+
+<!-- Reject Modal -->
+<div class="modal" id="rejectModal">
+    <div class="modal-content">
+        <div class="modal-header">
+            <h3 class="modal-title">
+                <i class="fas fa-times-circle" style="color: var(--danger);"></i>
+                Reject PR
+            </h3>
+            <button type="button" class="btn btn-outline btn-sm" onclick="closeModal('rejectModal')">
+                <i class="fas fa-times"></i>
+            </button>
+        </div>
+        <div class="modal-body">
+            <p>Are you sure you want to reject this purchase requisition?</p>
+            <div class="form-group">
+                <label class="form-label">Rejection Reason *</label>
+                <textarea class="form-control" id="rejectReason" 
+                          placeholder="Please provide a reason for rejection..." required></textarea>
+            </div>
+        </div>
+        <div class="modal-footer">
+            <button type="button" class="btn btn-secondary" onclick="closeModal('rejectModal')">
+                Cancel
+            </button>
+            <button type="button" class="btn btn-danger" onclick="submitReject()">
+                Confirm Rejection
+            </button>
+        </div>
+    </div>
+</div>
+
+<!-- Return Modal -->
+<div class="modal" id="returnModal">
+    <div class="modal-content">
+        <div class="modal-header">
+            <h3 class="modal-title">
+                <i class="fas fa-undo" style="color: var(--warning);"></i>
+                Return for Revision
+            </h3>
+            <button type="button" class="btn btn-outline btn-sm" onclick="closeModal('returnModal')">
+                <i class="fas fa-times"></i>
+            </button>
+        </div>
+        <div class="modal-body">
+            <p>Return this PR to the requester for revision?</p>
+            <div class="form-group">
+                <label class="form-label">Revision Instructions *</label>
+                <textarea class="form-control" id="returnReason" 
+                          placeholder="What needs to be revised or corrected?..." required></textarea>
+            </div>
+        </div>
+        <div class="modal-footer">
+            <button type="button" class="btn btn-secondary" onclick="closeModal('returnModal')">
+                Cancel
+            </button>
+            <button type="button" class="btn btn-warning" onclick="submitReturn()">
+                Return for Revision
+            </button>
+        </div>
+    </div>
+</div>
+
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    function showRejectModal() {
+        openModal('rejectModal');
+    }
+    
+    function showReturnModal() {
+        openModal('returnModal');
+    }
+    
+    function submitReject() {
+        const reason = document.getElementById('rejectReason').value;
+        if (!reason.trim()) {
+            alert('Please provide a rejection reason.');
+            return;
+        }
+        
+        const form = document.createElement('form');
+        form.method = 'POST';
+        form.action = `/approve/{{ pr.id }}/reject`;
+        
+        const input = document.createElement('input');
+        input.type = 'hidden';
+        input.name = 'comments';
+        input.value = reason;
+        
+        form.appendChild(input);
+        document.body.appendChild(form);
+        form.submit();
+    }
+    
+    function submitReturn() {
+        const reason = document.getElementById('returnReason').value;
+        if (!reason.trim()) {
+            alert('Please provide revision instructions.');
+            return;
+        }
+        
+        // We need to submit to a different endpoint for return
+        const form = document.createElement('form');
+        form.method = 'POST';
+        form.action = `/approve/{{ pr.id }}/return`;  // Note: This endpoint needs to be created
+        
+        const input = document.createElement('input');
+        input.type = 'hidden';
+        input.name = 'comments';
+        input.value = reason;
+        
+        form.appendChild(input);
+        document.body.appendChild(form);
+        form.submit();
+    }
+    
+    // Auto-save comments when typing
+    let commentSaveTimeout;
+    document.getElementById('comments').addEventListener('input', function() {
+        clearTimeout(commentSaveTimeout);
+        commentSaveTimeout = setTimeout(() => {
+            // Save comments to localStorage as draft
+            localStorage.setItem('pr_{{ pr.id }}_comments', this.value);
+        }, 1000);
+    });
+    
+    // Load saved comments
+    document.addEventListener('DOMContentLoaded', function() {
+        const savedComments = localStorage.getItem('pr_{{ pr.id }}_comments');
+        if (savedComments) {
+            document.getElementById('comments').value = savedComments;
+        }
+    });
+</script>
+{% endblock %}

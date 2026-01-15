@@ -1,0 +1,479 @@
+{% extends "base.html" %}
+
+{% block title %}Vendor Management{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <div>
+        <h1 class="page-title">
+            <i class="fas fa-building" style="color: var(--primary-600);"></i>
+            Vendor Management
+        </h1>
+        <p class="page-subtitle">
+            Manage vendor database, contacts, and procurement relationships
+        </p>
+    </div>
+    <div class="action-buttons">
+        <a href="/vendors/new" class="btn btn-primary">
+            <i class="fas fa-plus-circle"></i> Add New Vendor
+        </a>
+        <button class="btn btn-outline" onclick="exportVendors()">
+            <i class="fas fa-file-export"></i> Export
+        </button>
+    </div>
+</div>
+
+<!-- Vendor Statistics -->
+<div class="dashboard-grid" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 1.5rem; margin-bottom: 2rem;">
+    <div class="stat-card">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem;">
+            <h3 style="font-size: 0.875rem; color: var(--gray-600); text-transform: uppercase; letter-spacing: 1px;">Total Vendors</h3>
+            <div style="background: var(--primary-100); color: var(--primary-600); width: 40px; height: 40px; border-radius: 10px; display: flex; align-items: center; justify-content: center;">
+                <i class="fas fa-building"></i>
+            </div>
+        </div>
+        <div class="stat-number" style="font-size: 2.5rem; font-weight: 700; color: var(--primary-700);">{{ vendors|length }}</div>
+        <div style="color: var(--gray-600); font-size: 0.875rem;">Registered Suppliers</div>
+    </div>
+    
+    <div class="stat-card">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem;">
+            <h3 style="font-size: 0.875rem; color: var(--gray-600); text-transform: uppercase; letter-spacing: 1px;">Active Vendors</h3>
+            <div style="background: #d1fae5; color: #065f46; width: 40px; height: 40px; border-radius: 10px; display: flex; align-items: center; justify-content: center;">
+                <i class="fas fa-check-circle"></i>
+            </div>
+        </div>
+        <div class="stat-number" style="font-size: 2.5rem; font-weight: 700; color: #065f46;">{{ vendors|selectattr('is_active', 'equalto', 1)|list|length }}</div>
+        <div style="color: var(--gray-600); font-size: 0.875rem;">Currently Active</div>
+    </div>
+    
+    <div class="stat-card">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem;">
+            <h3 style="font-size: 0.875rem; color: var(--gray-600); text-transform: uppercase; letter-spacing: 1px;">Avg. Rating</h3>
+            <div style="background: #fef3c7; color: #92400e; width: 40px; height: 40px; border-radius: 10px; display: flex; align-items: center; justify-content: center;">
+                <i class="fas fa-star"></i>
+            </div>
+        </div>
+        <div class="stat-number" style="font-size: 2.5rem; font-weight: 700; color: #92400e;">
+            {{ "%.1f"|format(vendors|selectattr('is_active', 'equalto', 1)|map(attribute='rating')|sum / (vendors|selectattr('is_active', 'equalto', 1)|list|length) if vendors|selectattr('is_active', 'equalto', 1)|list|length > 0 else 0) }}
+        </div>
+        <div style="color: var(--gray-600); font-size: 0.875rem;">Out of 5 stars</div>
+    </div>
+    
+    <div class="stat-card">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem;">
+            <h3 style="font-size: 0.875rem; color: var(--gray-600); text-transform: uppercase; letter-spacing: 1px;">Top Categories</h3>
+            <div style="background: #dbeafe; color: #1e40af; width: 40px; height: 40px; border-radius: 10px; display: flex; align-items: center; justify-content: center;">
+                <i class="fas fa-tags"></i>
+            </div>
+        </div>
+        <div class="stat-number" style="font-size: 2.5rem; font-weight: 700; color: #1e40af;">5</div>
+        <div style="color: var(--gray-600); font-size: 0.875rem;">Supplier Types</div>
+    </div>
+</div>
+
+<!-- Vendor Search & Filter -->
+<div class="card mb-4">
+    <div class="card-header">
+        <h3 class="card-title">
+            <i class="fas fa-search"></i>
+            Search & Filter Vendors
+        </h3>
+    </div>
+    <div style="padding: 1.5rem;">
+        <div class="form-row">
+            <div class="form-group">
+                <input type="text" class="form-control" id="vendorSearch" 
+                       placeholder="Search by vendor name, code, or contact..." 
+                       onkeyup="filterVendors()">
+            </div>
+            
+            <div class="form-group">
+                <select class="form-control" id="vendorTypeFilter" onchange="filterVendors()">
+                    <option value="">All Types</option>
+                    <option value="SUPPLIER">Supplier</option>
+                    <option value="CONTRACTOR">Contractor</option>
+                    <option value="SERVICE_PROVIDER">Service Provider</option>
+                </select>
+            </div>
+            
+            <div class="form-group">
+                <select class="form-control" id="vendorStatusFilter" onchange="filterVendors()">
+                    <option value="">All Status</option>
+                    <option value="active">Active Only</option>
+                    <option value="inactive">Inactive Only</option>
+                </select>
+            </div>
+            
+            <div class="form-group" style="align-self: flex-end;">
+                <button class="btn btn-outline" onclick="resetFilters()">
+                    <i class="fas fa-redo"></i> Reset
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Vendors List -->
+<div class="card">
+    <div class="card-header">
+        <h3 class="card-title">
+            <i class="fas fa-list"></i>
+            Vendor Directory
+            <span class="badge" style="background: var(--primary-100); color: var(--primary-700); margin-left: 0.5rem;">
+                {{ vendors|length }} vendors
+            </span>
+        </h3>
+    </div>
+    
+    {% if vendors and vendors|length > 0 %}
+    <div class="table-responsive">
+        <table class="table" id="vendorsTable">
+            <thead>
+                <tr>
+                    <th>Vendor Code</th>
+                    <th>Vendor Name</th>
+                    <th>Type</th>
+                    <th>Contact Person</th>
+                    <th>Contact Info</th>
+                    <th>Rating</th>
+                    <th>Status</th>
+                    <th>Registered</th>
+                    <th>Actions</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for vendor in vendors %}
+                <tr data-vendor-type="{{ vendor.vendor_type }}" 
+                    data-vendor-status="{{ 'active' if vendor.is_active else 'inactive' }}"
+                    data-vendor-search="{{ (vendor.vendor_code ~ ' ' ~ vendor.vendor_name ~ ' ' ~ vendor.contact_person ~ ' ' ~ vendor.contact_email)|lower }}">
+                    <td>
+                        <strong>{{ vendor.vendor_code }}</strong>
+                    </td>
+                    <td>
+                        <div style="font-weight: 600;">{{ vendor.vendor_name }}</div>
+                        {% if vendor.tax_id %}
+                        <small class="text-muted">Tax ID: {{ vendor.tax_id }}</small>
+                        {% endif %}
+                    </td>
+                    <td>
+                        <span class="status-badge" style="background: 
+                            {% if vendor.vendor_type == 'SUPPLIER' %}var(--primary-100){% elif vendor.vendor_type == 'CONTRACTOR' %}var(--warning-100){% else %}var(--info-100){% endif %}; 
+                            color: {% if vendor.vendor_type == 'SUPPLIER' %}var(--primary-700){% elif vendor.vendor_type == 'CONTRACTOR' %}var(--warning-700){% else %}var(--info-700){% endif %};">
+                            {{ vendor.vendor_type|replace('_', ' ')|title }}
+                        </span>
+                    </td>
+                    <td>
+                        {{ vendor.contact_person or 'Not specified' }}
+                    </td>
+                    <td>
+                        {% if vendor.contact_email %}
+                        <div><i class="fas fa-envelope"></i> {{ vendor.contact_email }}</div>
+                        {% endif %}
+                        {% if vendor.contact_phone %}
+                        <div><i class="fas fa-phone"></i> {{ vendor.contact_phone }}</div>
+                        {% endif %}
+                    </td>
+                    <td>
+                        <div style="display: flex; align-items: center; gap: 0.25rem;">
+                            {% for i in range(5) %}
+                            <i class="fas fa-star" style="color: {% if i < vendor.rating %}var(--warning){% else %}var(--gray-300){% endif %}; font-size: 0.875rem;"></i>
+                            {% endfor %}
+                            <span style="margin-left: 0.5rem; font-weight: 600;">{{ vendor.rating }}</span>
+                        </div>
+                    </td>
+                    <td>
+                        {% if vendor.is_active %}
+                        <span class="status-badge" style="background: var(--success); color: white;">
+                            ACTIVE
+                        </span>
+                        {% else %}
+                        <span class="status-badge" style="background: var(--gray-400); color: white;">
+                            INACTIVE
+                        </span>
+                        {% endif %}
+                    </td>
+                    <td>
+                        {{ vendor.registration_date[:10] if vendor.registration_date else 'N/A' }}
+                    </td>
+                    <td>
+                        <div class="d-flex gap-2">
+                            <button type="button" class="btn btn-sm btn-outline"
+                                    onclick="viewVendorDetails('{{ vendor.id }}')">
+                                <i class="fas fa-eye"></i>
+                            </button>
+                            <a href="/vendors/edit/{{ vendor.id }}" class="btn btn-sm btn-outline">
+                                <i class="fas fa-edit"></i>
+                            </a>
+                            {% if vendor.is_active %}
+                            <button type="button" class="btn btn-sm btn-danger"
+                                    onclick="deactivateVendor('{{ vendor.id }}', '{{ vendor.vendor_name }}')">
+                                <i class="fas fa-ban"></i>
+                            </button>
+                            {% else %}
+                            <button type="button" class="btn btn-sm btn-success"
+                                    onclick="activateVendor('{{ vendor.id }}', '{{ vendor.vendor_name }}')">
+                                <i class="fas fa-check"></i>
+                            </button>
+                            {% endif %}
+                        </div>
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    
+    <!-- Pagination -->
+    <div class="card-footer" style="padding: 1rem; background: var(--gray-50); 
+                                    display: flex; justify-content: space-between; align-items: center;">
+        <div class="text-muted" style="font-size: 0.875rem;">
+            Showing {{ vendors|length }} of {{ vendors|length }} vendors
+        </div>
+        <div>
+            <button class="btn btn-outline btn-sm" disabled>
+                <i class="fas fa-chevron-left"></i>
+            </button>
+            <span style="margin: 0 1rem; font-weight: 600;">Page 1 of 1</span>
+            <button class="btn btn-outline btn-sm" disabled>
+                <i class="fas fa-chevron-right"></i>
+            </button>
+        </div>
+    </div>
+    
+    {% else %}
+    <div class="empty-state">
+        <div class="empty-state-icon">🏢</div>
+        <h3 class="empty-state-title">No Vendors Found</h3>
+        <p class="empty-state-description">
+            No vendors are registered in the system yet. Add your first vendor to get started.
+        </p>
+        <a href="/vendors/new" class="btn btn-primary">
+            <i class="fas fa-plus-circle"></i> Add First Vendor
+        </a>
+    </div>
+    {% endif %}
+</div>
+
+<!-- Vendor Details Modal -->
+<div class="modal" id="vendorModal">
+    <div class="modal-content" style="max-width: 800px;">
+        <div class="modal-header">
+            <h3 class="modal-title">
+                <i class="fas fa-building"></i>
+                Vendor Details
+            </h3>
+            <button type="button" class="btn btn-outline btn-sm" onclick="closeModal('vendorModal')">
+                <i class="fas fa-times"></i>
+            </button>
+        </div>
+        <div class="modal-body" id="vendorDetails">
+            <!-- Vendor details will be loaded here -->
+        </div>
+        <div class="modal-footer">
+            <button type="button" class="btn btn-secondary" onclick="closeModal('vendorModal')">
+                Close
+            </button>
+        </div>
+    </div>
+</div>
+
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    function filterVendors() {
+        const searchText = document.getElementById('vendorSearch').value.toLowerCase();
+        const typeFilter = document.getElementById('vendorTypeFilter').value;
+        const statusFilter = document.getElementById('vendorStatusFilter').value;
+        
+        const rows = document.querySelectorAll('#vendorsTable tbody tr');
+        let visibleCount = 0;
+        
+        rows.forEach(row => {
+            const matchesSearch = searchText === '' || 
+                row.dataset.vendorSearch.includes(searchText);
+            const matchesType = typeFilter === '' || 
+                row.dataset.vendorType === typeFilter;
+            const matchesStatus = statusFilter === '' || 
+                row.dataset.vendorStatus === statusFilter;
+            
+            if (matchesSearch && matchesType && matchesStatus) {
+                row.style.display = '';
+                visibleCount++;
+            } else {
+                row.style.display = 'none';
+            }
+        });
+        
+        // Update count display
+        const countElement = document.querySelector('.card-footer .text-muted');
+        if (countElement) {
+            countElement.textContent = `Showing ${visibleCount} of {{ vendors|length }} vendors`;
+        }
+    }
+    
+    function resetFilters() {
+        document.getElementById('vendorSearch').value = '';
+        document.getElementById('vendorTypeFilter').value = '';
+        document.getElementById('vendorStatusFilter').value = '';
+        filterVendors();
+    }
+    
+    async function viewVendorDetails(vendorId) {
+        try {
+            const response = await fetch(`/api/vendors/${vendorId}`);
+            const vendor = await response.json();
+            
+            const details = document.getElementById('vendorDetails');
+            details.innerHTML = `
+                <div class="form-row">
+                    <div class="form-group">
+                        <label class="form-label">Vendor Code</label>
+                        <div style="font-size: 1.25rem; font-weight: 600;">${vendor.vendor_code}</div>
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">Status</label>
+                        <div>
+                            ${vendor.is_active ? 
+                                '<span class="status-badge" style="background: var(--success); color: white;">ACTIVE</span>' : 
+                                '<span class="status-badge" style="background: var(--gray-400); color: white;">INACTIVE</span>'}
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="form-group">
+                    <label class="form-label">Vendor Name</label>
+                    <div style="font-size: 1.5rem; font-weight: 700;">${vendor.vendor_name}</div>
+                </div>
+                
+                <div class="form-row">
+                    <div class="form-group">
+                        <label class="form-label">Vendor Type</label>
+                        <div>${vendor.vendor_type ? vendor.vendor_type.replace('_', ' ') : 'Not specified'}</div>
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">Tax ID</label>
+                        <div>${vendor.tax_id || 'Not specified'}</div>
+                    </div>
+                </div>
+                
+                <div class="form-group">
+                    <label class="form-label">Address</label>
+                    <div style="background: var(--gray-50); padding: 1rem; border-radius: 8px;">
+                        ${vendor.address || 'Not specified'}
+                    </div>
+                </div>
+                
+                <div class="form-row">
+                    <div class="form-group">
+                        <label class="form-label">Contact Person</label>
+                        <div>${vendor.contact_person || 'Not specified'}</div>
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">Contact Email</label>
+                        <div><i class="fas fa-envelope"></i> ${vendor.contact_email || 'Not specified'}</div>
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">Contact Phone</label>
+                        <div><i class="fas fa-phone"></i> ${vendor.contact_phone || 'Not specified'}</div>
+                    </div>
+                </div>
+                
+                <div class="form-row">
+                    <div class="form-group">
+                        <label class="form-label">Bank Name</label>
+                        <div>${vendor.bank_name || 'Not specified'}</div>
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">Bank Account</label>
+                        <div>${vendor.bank_account || 'Not specified'}</div>
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">Payment Terms</label>
+                        <div>${vendor.payment_terms || 'NET30'}</div>
+                    </div>
+                </div>
+                
+                <div class="form-group">
+                    <label class="form-label">Rating</label>
+                    <div style="display: flex; align-items: center; gap: 0.5rem;">
+                        ${Array(5).fill().map((_, i) => 
+                            `<i class="fas fa-star" style="color: ${i < vendor.rating ? 'var(--warning)' : 'var(--gray-300)'};"></i>`
+                        ).join('')}
+                        <span style="font-weight: 600; margin-left: 0.5rem;">${vendor.rating}/5</span>
+                    </div>
+                </div>
+                
+                ${vendor.notes ? `
+                <div class="form-group">
+                    <label class="form-label">Notes</label>
+                    <div style="background: var(--gray-50); padding: 1rem; border-radius: 8px; font-style: italic;">
+                        ${vendor.notes}
+                    </div>
+                </div>
+                ` : ''}
+                
+                <div class="form-group">
+                    <label class="form-label">Registration Date</label>
+                    <div>${vendor.registration_date ? vendor.registration_date.slice(0, 10) : 'N/A'}</div>
+                </div>
+            `;
+            
+            openModal('vendorModal');
+        } catch (error) {
+            console.error('Error loading vendor details:', error);
+            alert('Failed to load vendor details.');
+        }
+    }
+    
+    function deactivateVendor(vendorId, vendorName) {
+        if (confirm(`Deactivate vendor "${vendorName}"? This will prevent new PRs from using this vendor.`)) {
+            fetch(`/api/vendors/${vendorId}/deactivate`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                }
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    alert('Vendor deactivated successfully!');
+                    location.reload();
+                }
+            })
+            .catch(error => {
+                console.error('Error deactivating vendor:', error);
+                alert('Failed to deactivate vendor.');
+            });
+        }
+    }
+    
+    function activateVendor(vendorId, vendorName) {
+        if (confirm(`Activate vendor "${vendorName}"?`)) {
+            fetch(`/api/vendors/${vendorId}/activate`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                }
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    alert('Vendor activated successfully!');
+                    location.reload();
+                }
+            })
+            .catch(error => {
+                console.error('Error activating vendor:', error);
+                alert('Failed to activate vendor.');
+            });
+        }
+    }
+    
+    function exportVendors() {
+        alert('Exporting vendor list... (In production, this would generate an Excel/CSV file)');
+        // In production, implement actual export functionality
+    }
+</script>
+{% endblock %}

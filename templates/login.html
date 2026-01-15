@@ -1,0 +1,336 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="light">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Enterprise PR System - Login</title>
+    
+    <!-- Font Awesome Icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    
+    <style>
+        :root {
+            --primary-50: #eff6ff;
+            --primary-100: #dbeafe;
+            --primary-200: #bfdbfe;
+            --primary-300: #93c5fd;
+            --primary-400: #60a5fa;
+            --primary-500: #3b82f6;
+            --primary-600: #2563eb;
+            --primary-700: #1d4ed8;
+            --primary-800: #1e40af;
+            --primary-900: #1e3a8a;
+            
+            --gray-50: #f9fafb;
+            --gray-100: #f3f4f6;
+            --gray-200: #e5e7eb;
+            --gray-300: #d1d5db;
+            --gray-400: #9ca3af;
+            --gray-500: #6b7280;
+            --gray-600: #4b5563;
+            --gray-700: #374151;
+            --gray-800: #1f2937;
+            --gray-900: #111827;
+            
+            --success: #10b981;
+            --warning: #f59e0b;
+            --danger: #ef4444;
+            --info: #3b82f6;
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background-color: var(--gray-50);
+            color: var(--gray-800);
+            line-height: 1.6;
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .login-container {
+            max-width: 400px;
+            width: 100%;
+            padding: 20px;
+        }
+
+        .login-card {
+            background: white;
+            border-radius: 12px;
+            box-shadow: 0 10px 25px rgba(0, 0, 0, 0.1);
+            overflow: hidden;
+        }
+
+        .login-header {
+            background: linear-gradient(135deg, var(--primary-600), var(--primary-700));
+            color: white;
+            padding: 2rem;
+            text-align: center;
+        }
+
+        .logo {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 1rem;
+            margin-bottom: 1rem;
+        }
+
+        .logo-icon {
+            font-size: 2.5rem;
+        }
+
+        .logo-text {
+            font-size: 1.75rem;
+            font-weight: 700;
+        }
+
+        .login-subtitle {
+            opacity: 0.9;
+            font-size: 0.875rem;
+        }
+
+        .login-body {
+            padding: 2rem;
+        }
+
+        .form-group {
+            margin-bottom: 1.5rem;
+        }
+
+        .form-label {
+            display: block;
+            margin-bottom: 0.5rem;
+            font-weight: 500;
+            color: var(--gray-700);
+        }
+
+        .form-control {
+            width: 100%;
+            padding: 0.875rem 1rem;
+            border: 2px solid var(--gray-300);
+            border-radius: 8px;
+            font-size: 1rem;
+            transition: all 0.3s ease;
+        }
+
+        .form-control:focus {
+            outline: none;
+            border-color: var(--primary-500);
+            box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
+        }
+
+        .btn {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            gap: 0.5rem;
+            padding: 0.875rem 1.5rem;
+            border: none;
+            border-radius: 8px;
+            font-size: 1rem;
+            font-weight: 500;
+            cursor: pointer;
+            text-decoration: none;
+            transition: all 0.3s ease;
+            width: 100%;
+        }
+
+        .btn-primary {
+            background: var(--primary-600);
+            color: white;
+        }
+
+        .btn-primary:hover {
+            background: var(--primary-700);
+            transform: translateY(-2px);
+            box-shadow: 0 10px 15px -3px rgba(59, 130, 246, 0.3);
+        }
+
+        .login-footer {
+            padding: 1.5rem;
+            text-align: center;
+            background: var(--gray-50);
+            border-top: 1px solid var(--gray-200);
+        }
+
+        .demo-credentials {
+            background: var(--gray-100);
+            padding: 1.5rem;
+            border-radius: 8px;
+            margin-top: 1.5rem;
+            font-size: 0.875rem;
+        }
+
+        .demo-credentials h4 {
+            margin-bottom: 0.75rem;
+            color: var(--gray-700);
+        }
+
+        .demo-table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+
+        .demo-table td {
+            padding: 0.25rem 0;
+            border-bottom: 1px solid var(--gray-200);
+        }
+
+        .demo-table tr:last-child td {
+            border-bottom: none;
+        }
+
+        .alert {
+            padding: 1rem 1.5rem;
+            border-radius: 8px;
+            margin-bottom: 1.5rem;
+            display: flex;
+            align-items: center;
+            gap: 1rem;
+            animation: slideIn 0.3s ease;
+        }
+
+        .alert-danger {
+            background: #fee2e2;
+            color: #991b1b;
+            border-left: 4px solid var(--danger);
+        }
+
+        @keyframes slideIn {
+            from {
+                opacity: 0;
+                transform: translateY(-10px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        .forgot-link {
+            text-align: center;
+            margin-top: 1rem;
+        }
+
+        .forgot-link a {
+            color: var(--primary-600);
+            text-decoration: none;
+            font-size: 0.875rem;
+        }
+
+        .forgot-link a:hover {
+            text-decoration: underline;
+        }
+    </style>
+</head>
+<body>
+    <div class="login-container">
+        <div class="login-card">
+            <div class="login-header">
+                <div class="logo">
+                    <div class="logo-icon">📋</div>
+                    <div class="logo-text">PR System</div>
+                </div>
+                <p class="login-subtitle">Enterprise Purchase Requisition Portal</p>
+            </div>
+            
+            <div class="login-body">
+                {% with messages = get_flashed_messages() %}
+                    {% if messages %}
+                        {% for message in messages %}
+                            <div class="alert alert-danger">
+                                <i class="fas fa-exclamation-circle"></i>
+                                {{ message }}
+                            </div>
+                        {% endfor %}
+                    {% endif %}
+                {% endwith %}
+                
+                <form method="POST" action="/">
+                    <div class="form-group">
+                        <label for="username" class="form-label">
+                            <i class="fas fa-user"></i> Username
+                        </label>
+                        <input type="text" class="form-control" id="username" name="username" 
+                               placeholder="Enter your username" required autofocus>
+                    </div>
+                    
+                    <div class="form-group">
+                        <label for="password" class="form-label">
+                            <i class="fas fa-key"></i> Password
+                        </label>
+                        <input type="password" class="form-control" id="password" name="password" 
+                               placeholder="Enter your password" required>
+                    </div>
+                    
+                    <div class="form-group">
+                        <button type="submit" class="btn btn-primary">
+                            <i class="fas fa-sign-in-alt"></i> Login to System
+                        </button>
+                    </div>
+                    
+                    <div class="forgot-link">
+                        <a href="#">
+                            <i class="fas fa-question-circle"></i> Forgot Password?
+                        </a>
+                    </div>
+                </form>
+            </div>
+            
+            <div class="login-footer">
+                <div class="demo-credentials">
+                    <h4><i class="fas fa-info-circle"></i> Demo Credentials</h4>
+                    <table class="demo-table">
+                        <tr>
+                            <td><strong>Super Admin:</strong></td>
+                            <td>admin / admin123</td>
+                        </tr>
+                        <tr>
+                            <td><strong>Regular User:</strong></td>
+                            <td>user1 / user123</td>
+                        </tr>
+                        <tr>
+                            <td><strong>Approver 1:</strong></td>
+                            <td>approver1 / approver123</td>
+                        </tr>
+                        <tr>
+                            <td><strong>Procurement:</strong></td>
+                            <td>procurement1 / procurement123</td>
+                        </tr>
+                    </table>
+                </div>
+                
+                <p style="color: var(--gray-500); font-size: 0.875rem; margin-top: 1rem;">
+                    <i class="fas fa-shield-alt"></i> Secure login with enterprise-grade encryption
+                </p>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Auto-hide alerts after 5 seconds
+        setTimeout(() => {
+            const alerts = document.querySelectorAll('.alert');
+            alerts.forEach(alert => {
+                alert.style.opacity = '0';
+                setTimeout(() => alert.remove(), 300);
+            });
+        }, 5000);
+
+        // Enter key to submit
+        document.addEventListener('keypress', function(e) {
+            if (e.key === 'Enter' && !e.target.matches('button, input[type="submit"]')) {
+                document.querySelector('form').submit();
+            }
+        });
+    </script>
+</body>
+</html>

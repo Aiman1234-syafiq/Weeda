@@ -1,0 +1,410 @@
+{% extends "base.html" %}
+
+{% block title %}Dashboard{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <div>
+        <h1 class="page-title">
+            <i class="fas fa-tachometer-alt" style="color: var(--primary-600);"></i>
+            Welcome, {{ name }}!
+        </h1>
+        <p class="page-subtitle">
+            Purchase Requisition System Dashboard • {{ session.role|title }}
+            {% if session.department %}
+            • {{ session.department }} Department
+            {% endif %}
+        </p>
+    </div>
+    
+    <div class="action-buttons">
+        {% if session.role == 'user' %}
+        <a href="/pr/new" class="btn btn-primary">
+            <i class="fas fa-plus-circle"></i> New PR
+        </a>
+        {% endif %}
+        
+        {% if session.role in ['approver1', 'approver2', 'approver3', 'approver4'] and stats.pending_approvals > 0 %}
+        <a href="/approve" class="btn btn-warning">
+            <i class="fas fa-clock"></i> {{ stats.pending_approvals }} Pending
+        </a>
+        {% endif %}
+        
+        {% if session.role == 'procurement' and stats.pending_receipt > 0 %}
+        <a href="/procurement" class="btn btn-success">
+            <i class="fas fa-shopping-cart"></i> {{ stats.pending_receipt }} PRs Ready
+        </a>
+        {% endif %}
+    </div>
+</div>
+
+<!-- Quick Stats -->
+<div class="dashboard-grid" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: 1.5rem; margin-bottom: 2rem;">
+    {% if session.role == 'user' %}
+    <div class="stat-card" style="background: white; padding: 1.5rem; border-radius: var(--border-radius); box-shadow: var(--box-shadow);">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem;">
+            <h3 style="font-size: 0.875rem; color: var(--gray-600); text-transform: uppercase; letter-spacing: 1px;">Total PRs</h3>
+            <div style="background: var(--primary-100); color: var(--primary-600); width: 40px; height: 40px; border-radius: 10px; display: flex; align-items: center; justify-content: center;">
+                <i class="fas fa-file-alt"></i>
+            </div>
+        </div>
+        <div class="stat-number" style="font-size: 2.5rem; font-weight: 700; color: var(--primary-700);">{{ stats.total_pr }}</div>
+        <div style="color: var(--gray-600); font-size: 0.875rem;">Purchase Requisitions Created</div>
+    </div>
+    
+    <div class="stat-card">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem;">
+            <h3 style="font-size: 0.875rem; color: var(--gray-600); text-transform: uppercase; letter-spacing: 1px;">Pending Approval</h3>
+            <div style="background: #fef3c7; color: #92400e; width: 40px; height: 40px; border-radius: 10px; display: flex; align-items: center; justify-content: center;">
+                <i class="fas fa-clock"></i>
+            </div>
+        </div>
+        <div class="stat-number" style="font-size: 2.5rem; font-weight: 700; color: #92400e;">{{ stats.pending_pr }}</div>
+        <div style="color: var(--gray-600); font-size: 0.875rem;">Awaiting Approval</div>
+    </div>
+    
+    <div class="stat-card">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem;">
+            <h3 style="font-size: 0.875rem; color: var(--gray-600); text-transform: uppercase; letter-spacing: 1px;">Approved</h3>
+            <div style="background: #d1fae5; color: #065f46; width: 40px; height: 40px; border-radius: 10px; display: flex; align-items: center; justify-content: center;">
+                <i class="fas fa-check-circle"></i>
+            </div>
+        </div>
+        <div class="stat-number" style="font-size: 2.5rem; font-weight: 700; color: #065f46;">{{ stats.approved_pr }}</div>
+        <div style="color: var(--gray-600); font-size: 0.875rem;">Successfully Approved</div>
+    </div>
+    
+    {% elif session.role in ['approver1', 'approver2', 'approver3', 'approver4'] %}
+    <div class="stat-card">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem;">
+            <h3 style="font-size: 0.875rem; color: var(--gray-600); text-transform: uppercase; letter-spacing: 1px;">Pending Reviews</h3>
+            <div style="background: #fef3c7; color: #92400e; width: 40px; height: 40px; border-radius: 10px; display: flex; align-items: center; justify-content: center;">
+                <i class="fas fa-inbox"></i>
+            </div>
+        </div>
+        <div class="stat-number" style="font-size: 2.5rem; font-weight: 700; color: #92400e;">{{ stats.pending_approvals }}</div>
+        <div style="color: var(--gray-600); font-size: 0.875rem;">Require Your Action</div>
+    </div>
+    
+    {% elif session.role == 'procurement' %}
+    <div class="stat-card">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem;">
+            <h3 style="font-size: 0.875rem; color: var(--gray-600); text-transform: uppercase; letter-spacing: 1px;">Approved PRs</h3>
+            <div style="background: var(--primary-100); color: var(--primary-600); width: 40px; height: 40px; border-radius: 10px; display: flex; align-items: center; justify-content: center;">
+                <i class="fas fa-check-circle"></i>
+            </div>
+        </div>
+        <div class="stat-number" style="font-size: 2.5rem; font-weight: 700; color: var(--primary-700);">{{ stats.total_approved }}</div>
+        <div style="color: var(--gray-600); font-size: 0.875rem;">Ready for Procurement</div>
+    </div>
+    
+    <div class="stat-card">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem;">
+            <h3 style="font-size: 0.875rem; color: var(--gray-600); text-transform: uppercase; letter-spacing: 1px;">Received</h3>
+            <div style="background: #d1fae5; color: #065f46; width: 40px; height: 40px; border-radius: 10px; display: flex; align-items: center; justify-content: center;">
+                <i class="fas fa-shopping-cart"></i>
+            </div>
+        </div>
+        <div class="stat-number" style="font-size: 2.5rem; font-weight: 700; color: #065f46;">{{ stats.received_count }}</div>
+        <div style="color: var(--gray-600); font-size: 0.875rem;">In Procurement Process</div>
+    </div>
+    
+    <div class="stat-card">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem;">
+            <h3 style="font-size: 0.875rem; color: var(--gray-600); text-transform: uppercase; letter-spacing: 1px;">Pending Receipt</h3>
+            <div style="background: #fef3c7; color: #92400e; width: 40px; height: 40px; border-radius: 10px; display: flex; align-items: center; justify-content: center;">
+                <i class="fas fa-clock"></i>
+            </div>
+        </div>
+        <div class="stat-number" style="font-size: 2.5rem; font-weight: 700; color: #92400e;">{{ stats.pending_receipt }}</div>
+        <div style="color: var(--gray-600); font-size: 0.875rem;">Awaiting Processing</div>
+    </div>
+    
+    {% elif session.role == 'superadmin' %}
+    <div class="stat-card">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem;">
+            <h3 style="font-size: 0.875rem; color: var(--gray-600); text-transform: uppercase; letter-spacing: 1px;">Total Users</h3>
+            <div style="background: var(--primary-100); color: var(--primary-600); width: 40px; height: 40px; border-radius: 10px; display: flex; align-items: center; justify-content: center;">
+                <i class="fas fa-users"></i>
+            </div>
+        </div>
+        <div class="stat-number" style="font-size: 2.5rem; font-weight: 700; color: var(--primary-700);">{{ stats.total_users }}</div>
+        <div style="color: var(--gray-600); font-size: 0.875rem;">System Users</div>
+    </div>
+    
+    <div class="stat-card">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem;">
+            <h3 style="font-size: 0.875rem; color: var(--gray-600); text-transform: uppercase; letter-spacing: 1px;">Total PRs</h3>
+            <div style="background: #d1fae5; color: #065f46; width: 40px; height: 40px; border-radius: 10px; display: flex; align-items: center; justify-content: center;">
+                <i class="fas fa-file-alt"></i>
+            </div>
+        </div>
+        <div class="stat-number" style="font-size: 2.5rem; font-weight: 700; color: #065f46;">{{ stats.total_prs }}</div>
+        <div style="color: var(--gray-600); font-size: 0.875rem;">Purchase Requisitions</div>
+    </div>
+    
+    <div class="stat-card">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem;">
+            <h3 style="font-size: 0.875rem; color: var(--gray-600); text-transform: uppercase; letter-spacing: 1px;">Vendors</h3>
+            <div style="background: #dbeafe; color: #1e40af; width: 40px; height: 40px; border-radius: 10px; display: flex; align-items: center; justify-content: center;">
+                <i class="fas fa-building"></i>
+            </div>
+        </div>
+        <div class="stat-number" style="font-size: 2.5rem; font-weight: 700; color: #1e40af;">{{ stats.total_vendors }}</div>
+        <div style="color: var(--gray-600); font-size: 0.875rem;">Registered Vendors</div>
+    </div>
+    {% endif %}
+</div>
+
+<!-- Budget Overview (for users with department) -->
+{% if budget_overview and session.role == 'user' %}
+<div class="card mb-4">
+    <div class="card-header">
+        <h3 class="card-title">
+            <i class="fas fa-chart-pie" style="margin-right: 10px;"></i>
+            {{ session.department }} Budget Overview ({{ datetime.now().year }})
+        </h3>
+    </div>
+    <div class="table-responsive">
+        <table class="table">
+            <thead>
+                <tr>
+                    <th>Category</th>
+                    <th>Allocated</th>
+                    <th>Spent</th>
+                    <th>Remaining</th>
+                    <th>Utilization</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for budget in budget_overview %}
+                <tr>
+                    <td><strong>{{ budget.category }}</strong></td>
+                    <td>RM {{ "%.2f"|format(budget.allocated_amount) }}</td>
+                    <td>RM {{ "%.2f"|format(budget.spent_amount) }}</td>
+                    <td>
+                        <strong>RM {{ "%.2f"|format(budget.remaining_amount) }}</strong>
+                    </td>
+                    <td>
+                        {% set utilization = (budget.spent_amount / budget.allocated_amount * 100) if budget.allocated_amount > 0 else 0 %}
+                        <div style="display: flex; align-items: center; gap: 10px;">
+                            <div style="flex: 1; background: var(--gray-200); height: 8px; border-radius: 4px; overflow: hidden;">
+                                <div style="width: {{ utilization }}%; background: {% if utilization > 90 %}var(--danger){% elif utilization > 75 %}var(--warning){% else %}var(--success){% endif %}; height: 100%;"></div>
+                            </div>
+                            <span style="font-weight: 600; color: {% if utilization > 90 %}var(--danger){% elif utilization > 75 %}var(--warning){% else %}var(--success){% endif %};">
+                                {{ "%.1f"|format(utilization) }}%
+                            </span>
+                        </div>
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+{% endif %}
+
+<!-- Recent Activity -->
+<div class="card">
+    <div class="card-header">
+        <h3 class="card-title">
+            <i class="fas fa-history" style="margin-right: 10px;"></i>
+            {% if session.role == 'user' %}
+            My Recent PRs
+            {% elif session.role in ['approver1', 'approver2', 'approver3', 'approver4'] %}
+            Pending Approvals
+            {% elif session.role == 'procurement' %}
+            Approved PRs Ready for Processing
+            {% elif session.role == 'superadmin' %}
+            Recent System Activity
+            {% endif %}
+        </h3>
+        {% if my_pr|length > 0 %}
+        <a href="{% if session.role == 'user' %}#{% elif session.role in ['approver1', 'approver2', 'approver3', 'approver4'] %}/approve{% elif session.role == 'procurement' %}/procurement{% else %}#{% endif %}" 
+           class="btn btn-outline btn-sm">
+            View All
+        </a>
+        {% endif %}
+    </div>
+    
+    {% if my_pr and my_pr|length > 0 %}
+    <div class="table-responsive">
+        <table class="table">
+            <thead>
+                <tr>
+                    <th>PR Number</th>
+                    <th>Description</th>
+                    {% if session.role != 'user' %}
+                    <th>Requester</th>
+                    {% endif %}
+                    <th>Amount</th>
+                    <th>Status</th>
+                    <th>Date</th>
+                    <th>Actions</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for pr in my_pr %}
+                <tr>
+                    <td>
+                        <strong>{{ pr.pr_no }}</strong>
+                        {% if pr.item_count %}
+                        <br>
+                        <small class="text-muted">{{ pr.item_count }} items</small>
+                        {% endif %}
+                    </td>
+                    <td>
+                        {{ pr.purpose[:50] }}
+                        {% if pr.purpose|length > 50 %}...{% endif %}
+                    </td>
+                    {% if session.role != 'user' %}
+                    <td>{{ pr.requester_name_full or pr.requester_name }}</td>
+                    {% endif %}
+                    <td>
+                        <strong>RM {{ "%.2f"|format(pr.total_amount) }}</strong>
+                    </td>
+                    <td>
+                        {% if pr.status == 'DRAFT' %}
+                        <span class="status-badge status-draft">DRAFT</span>
+                        {% elif pr.status == 'PENDING_APPROVAL' %}
+                        <span class="status-badge status-pending">PENDING</span>
+                        {% elif pr.status == 'APPROVED' %}
+                        <span class="status-badge status-approved">APPROVED</span>
+                        {% elif pr.status == 'REJECTED' %}
+                        <span class="status-badge status-rejected">REJECTED</span>
+                        {% elif pr.status == 'BUDGET_EXCEPTION_PENDING' %}
+                        <span class="status-badge status-budget-pending">BUDGET EXCEPTION</span>
+                        {% else %}
+                        <span class="status-badge">{{ pr.status }}</span>
+                        {% endif %}
+                    </td>
+                    <td>
+                        {{ pr.created_at[:10] }}
+                        <br>
+                        <small class="text-muted">{{ pr.created_at[11:16] }}</small>
+                    </td>
+                    <td>
+                        <div class="d-flex gap-2">
+                            {% if session.role == 'user' and pr.status == 'DRAFT' %}
+                            <a href="/pr/{{ pr.id }}/review" class="btn btn-sm btn-outline">
+                                <i class="fas fa-edit"></i>
+                            </a>
+                            <a href="/pr/{{ pr.id }}/submit" class="btn btn-sm btn-success"
+                               onclick="return confirm('Submit this PR for approval?')">
+                                Submit
+                            </a>
+                            {% elif session.role in ['approver1', 'approver2', 'approver3', 'approver4'] %}
+                            <a href="/approve/{{ pr.id }}/review" class="btn btn-sm btn-primary">
+                                <i class="fas fa-eye"></i> Review
+                            </a>
+                            {% elif session.role == 'procurement' and pr.status == 'APPROVED' %}
+                            <form method="POST" action="/procurement/receive/{{ pr.id }}" style="display: inline;">
+                                <button type="submit" class="btn btn-sm btn-success"
+                                        onclick="return confirm('Mark PR {{ pr.pr_no }} as received by procurement?')">
+                                    <i class="fas fa-check"></i> Receive
+                                </button>
+                            </form>
+                            {% endif %}
+                        </div>
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    {% else %}
+    <div class="empty-state">
+        <div class="empty-state-icon">
+            {% if session.role == 'user' %}
+            📋
+            {% elif session.role in ['approver1', 'approver2', 'approver3', 'approver4'] %}
+            ✅
+            {% elif session.role == 'procurement' %}
+            🛒
+            {% else %}
+            📊
+            {% endif %}
+        </div>
+        <h3 class="empty-state-title">
+            {% if session.role == 'user' %}
+            No Purchase Requisitions Yet
+            {% elif session.role in ['approver1', 'approver2', 'approver3', 'approver4'] %}
+            No Pending Approvals
+            {% elif session.role == 'procurement' %}
+            No Approved PRs
+            {% else %}
+            Welcome to Admin Dashboard
+            {% endif %}
+        </h3>
+        <p class="empty-state-description">
+            {% if session.role == 'user' %}
+            Create your first purchase requisition to get started with the procurement process.
+            {% elif session.role in ['approver1', 'approver2', 'approver3', 'approver4'] %}
+            All approval requests have been processed. Check back later for new submissions.
+            {% elif session.role == 'procurement' %}
+            There are no approved purchase requisitions awaiting procurement processing at the moment.
+            {% else %}
+            Use the navigation menu to manage users, view reports, and monitor system activity.
+            {% endif %}
+        </p>
+        {% if session.role == 'user' %}
+        <a href="/pr/new" class="btn btn-primary">
+            <i class="fas fa-plus-circle"></i> Create New PR
+        </a>
+        {% endif %}
+    </div>
+    {% endif %}
+</div>
+
+<!-- System Notifications -->
+{% if notifications and notifications|length > 0 %}
+<div class="card mt-4">
+    <div class="card-header">
+        <h3 class="card-title">
+            <i class="fas fa-bell" style="margin-right: 10px;"></i>
+            Notifications
+        </h3>
+    </div>
+    <div style="padding: 1rem;">
+        {% for notification in notifications %}
+        <div class="alert alert-info" style="margin-bottom: 1rem; padding: 1rem;">
+            <div style="display: flex; justify-content: space-between; align-items: flex-start;">
+                <div>
+                    <strong>{{ notification.title }}</strong>
+                    <p style="margin: 0.5rem 0 0; color: var(--gray-700);">{{ notification.message }}</p>
+                    <small class="text-muted">{{ notification.created_at[:16] }}</small>
+                </div>
+                <form method="POST" action="/notifications/mark-read/{{ notification.id }}" 
+                      style="display: inline;">
+                    <button type="submit" class="btn btn-sm btn-outline">
+                        <i class="fas fa-times"></i>
+                    </button>
+                </form>
+            </div>
+        </div>
+        {% endfor %}
+    </div>
+</div>
+{% endif %}
+
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    // Auto-refresh dashboard every 30 seconds for approvers and procurement
+    {% if session.role in ['approver1', 'approver2', 'approver3', 'approver4', 'procurement'] %}
+    setInterval(() => {
+        // Simple check for new items
+        fetch('/dashboard')
+            .then(response => response.text())
+            .then(html => {
+                // Check if we should reload (simplified)
+                if (html.includes('notification-badge')) {
+                    // There are new notifications, reload page
+                    location.reload();
+                }
+            });
+    }, 30000); // 30 seconds
+    {% endif %}
+</script>
+{% endblock %}

@@ -1,0 +1,147 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Error {{ error_code }} - PR System</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 20px;
+        }
+        
+        .error-container {
+            background: white;
+            border-radius: 20px;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+            padding: 40px;
+            max-width: 500px;
+            width: 100%;
+            text-align: center;
+        }
+        
+        .error-icon {
+            font-size: 80px;
+            margin-bottom: 20px;
+        }
+        
+        .error-code {
+            font-size: 72px;
+            font-weight: 900;
+            color: #667eea;
+            margin-bottom: 10px;
+        }
+        
+        .error-title {
+            font-size: 24px;
+            color: #333;
+            margin-bottom: 10px;
+        }
+        
+        .error-message {
+            color: #666;
+            margin-bottom: 30px;
+            line-height: 1.6;
+        }
+        
+        .error-actions {
+            display: flex;
+            gap: 10px;
+            justify-content: center;
+            margin-top: 30px;
+        }
+        
+        .btn {
+            padding: 12px 24px;
+            border-radius: 10px;
+            text-decoration: none;
+            font-weight: 600;
+            transition: all 0.3s ease;
+        }
+        
+        .btn-primary {
+            background: #667eea;
+            color: white;
+        }
+        
+        .btn-primary:hover {
+            background: #5a67d8;
+            transform: translateY(-2px);
+        }
+        
+        .btn-secondary {
+            background: #e2e8f0;
+            color: #4a5568;
+        }
+        
+        .btn-secondary:hover {
+            background: #cbd5e0;
+            transform: translateY(-2px);
+        }
+        
+        .error-details {
+            margin-top: 30px;
+            padding-top: 20px;
+            border-top: 1px solid #e2e8f0;
+            text-align: left;
+            font-size: 14px;
+            color: #718096;
+        }
+        
+        .error-details div {
+            margin-bottom: 5px;
+        }
+        
+        @media (max-width: 600px) {
+            .error-container {
+                padding: 30px 20px;
+            }
+            
+            .error-actions {
+                flex-direction: column;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="error-container">
+        <div class="error-icon">
+            {% if error_code == 404 %}
+            🔍
+            {% elif error_code == 403 %}
+            ⚠️
+            {% elif error_code == 500 %}
+            💥
+            {% else %}
+            ❗
+            {% endif %}
+        </div>
+        
+        <div class="error-code">{{ error_code }}</div>
+        <h1 class="error-title">{{ error_message }}</h1>
+        <p class="error-message">{{ error_description }}</p>
+        
+        <div class="error-actions">
+            <a href="/dashboard" class="btn btn-primary">Go to Dashboard</a>
+            <a href="/" class="btn btn-secondary">Back to Login</a>
+        </div>
+        
+        <div class="error-details">
+            <div><strong>Error Code:</strong> {{ error_code }}</div>
+            <div><strong>Timestamp:</strong> {{ datetime.now().isoformat() }}</div>
+            <div><strong>Session:</strong> {{ session.get('role', 'Not logged in') }}</div>
+        </div>
+    </div>
+</body>
+</html>

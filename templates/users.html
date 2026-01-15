@@ -1,0 +1,542 @@
+{% extends "base.html" %}
+
+{% block title %}User Management{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <div>
+        <h1 class="page-title">
+            <i class="fas fa-users-cog" style="color: var(--primary-600);"></i>
+            User Management
+        </h1>
+        <p class="page-subtitle">
+            Manage system users, roles, and permissions
+        </p>
+    </div>
+    <div class="action-buttons">
+        <button class="btn btn-primary" onclick="openModal('newUserModal')">
+            <i class="fas fa-user-plus"></i> Add New User
+        </button>
+        <button class="btn btn-outline" onclick="exportUsers()">
+            <i class="fas fa-file-export"></i> Export
+        </button>
+    </div>
+</div>
+
+<!-- User Statistics -->
+<div class="dashboard-grid" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 1.5rem; margin-bottom: 2rem;">
+    <div class="stat-card">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem;">
+            <h3 style="font-size: 0.875rem; color: var(--gray-600); text-transform: uppercase; letter-spacing: 1px;">Total Users</h3>
+            <div style="background: var(--primary-100); color: var(--primary-600); width: 40px; height: 40px; border-radius: 10px; display: flex; align-items: center; justify-content: center;">
+                <i class="fas fa-users"></i>
+            </div>
+        </div>
+        <div class="stat-number" style="font-size: 2.5rem; font-weight: 700; color: var(--primary-700);">{{ users|length }}</div>
+        <div style="color: var(--gray-600); font-size: 0.875rem;">System Users</div>
+    </div>
+    
+    <div class="stat-card">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem;">
+            <h3 style="font-size: 0.875rem; color: var(--gray-600); text-transform: uppercase; letter-spacing: 1px;">Active Users</h3>
+            <div style="background: #d1fae5; color: #065f46; width: 40px; height: 40px; border-radius: 10px; display: flex; align-items: center; justify-content: center;">
+                <i class="fas fa-user-check"></i>
+            </div>
+        </div>
+        <div class="stat-number" style="font-size: 2.5rem; font-weight: 700; color: #065f46;">{{ users|selectattr('active', 'equalto', 1)|list|length }}</div>
+        <div style="color: var(--gray-600); font-size: 0.875rem;">Currently Active</div>
+    </div>
+    
+    <div class="stat-card">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem;">
+            <h3 style="font-size: 0.875rem; color: var(--gray-600); text-transform: uppercase; letter-spacing: 1px;">Regular Users</h3>
+            <div style="background: #dbeafe; color: #1e40af; width: 40px; height: 40px; border-radius: 10px; display: flex; align-items: center; justify-content: center;">
+                <i class="fas fa-user"></i>
+            </div>
+        </div>
+        <div class="stat-number" style="font-size: 2.5rem; font-weight: 700; color: #1e40af;">{{ users|selectattr('role', 'equalto', 'user')|list|length }}</div>
+        <div style="color: var(--gray-600); font-size: 0.875rem;">PR Requesters</div>
+    </div>
+    
+    <div class="stat-card">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem;">
+            <h3 style="font-size: 0.875rem; color: var(--gray-600); text-transform: uppercase; letter-spacing: 1px;">Approvers</h3>
+            <div style="background: #fef3c7; color: #92400e; width: 40px; height: 40px; border-radius: 10px; display: flex; align-items: center; justify-content: center;">
+                <i class="fas fa-user-tie"></i>
+            </div>
+        </div>
+        <div class="stat-number" style="font-size: 2.5rem; font-weight: 700; color: #92400e;">{{ users|selectattr('role', 'in', ['approver1', 'approver2', 'approver3', 'approver4'])|list|length }}</div>
+        <div style="color: var(--gray-600); font-size: 0.875rem;">Approval Roles</div>
+    </div>
+</div>
+
+<!-- Role Distribution -->
+<div class="card mb-4">
+    <div class="card-header">
+        <h3 class="card-title">
+            <i class="fas fa-chart-pie"></i>
+            Role Distribution
+        </h3>
+    </div>
+    <div style="padding: 1.5rem;">
+        <div class="form-row">
+            {% set role_counts = {} %}
+            {% for user in users %}
+                {% set role = user.role %}
+                {% if role_counts.update({role: role_counts.get(role, 0) + 1}) %}{% endif %}
+            {% endfor %}
+            
+            {% for role, count in role_counts.items() %}
+            <div class="form-group">
+                <div style="text-align: center;">
+                    <div style="font-size: 2rem; font-weight: 700; 
+                                color: {% if role == 'superadmin' %}var(--danger)
+                                       {% elif role == 'user' %}var(--primary-600)
+                                       {% elif role.startswith('approver') %}var(--warning)
+                                       {% elif role == 'procurement' %}var(--success)
+                                       {% else %}var(--gray-600){% endif %};">
+                        {{ count }}
+                    </div>
+                    <div style="color: var(--gray-600); font-size: 0.875rem; margin-top: 0.5rem;">
+                        {{ role|upper }}
+                    </div>
+                    <div class="progress-bar" style="margin-top: 0.5rem;">
+                        <div class="progress-fill" style="width: {{ (count/users|length*100)|round(1) }}%; 
+                                                          background: {% if role == 'superadmin' %}var(--danger)
+                                                                     {% elif role == 'user' %}var(--primary-600)
+                                                                     {% elif role.startswith('approver') %}var(--warning)
+                                                                     {% elif role == 'procurement' %}var(--success)
+                                                                     {% else %}var(--gray-600){% endif %};">
+                        </div>
+                    </div>
+                </div>
+            </div>
+            {% endfor %}
+        </div>
+    </div>
+</div>
+
+<!-- Users List -->
+<div class="card">
+    <div class="card-header">
+        <h3 class="card-title">
+            <i class="fas fa-list"></i>
+            User Directory
+            <span class="badge" style="background: var(--primary-100); color: var(--primary-700); margin-left: 0.5rem;">
+                {{ users|length }} users
+            </span>
+        </h3>
+        <div class="text-muted" style="font-size: 0.875rem;">
+            Manage user accounts, roles, and permissions
+        </div>
+    </div>
+    
+    {% if users and users|length > 0 %}
+    <div class="table-responsive">
+        <table class="table" id="usersTable">
+            <thead>
+                <tr>
+                    <th>ID</th>
+                    <th>Username</th>
+                    <th>Full Name</th>
+                    <th>Email</th>
+                    <th>Department</th>
+                    <th>Role</th>
+                    <th>Approval Limit</th>
+                    <th>Status</th>
+                    <th>Last Login</th>
+                    <th>Created</th>
+                    <th>Actions</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for user in users %}
+                <tr>
+                    <td>{{ user.id }}</td>
+                    <td>
+                        <strong>{{ user.username }}</strong>
+                    </td>
+                    <td>
+                        {{ user.full_name }}
+                        {% if user.id == session.user_id %}
+                        <span class="badge" style="background: var(--primary-100); color: var(--primary-700); margin-left: 0.5rem; font-size: 0.75rem;">
+                            You
+                        </span>
+                        {% endif %}
+                    </td>
+                    <td>{{ user.email or '-' }}</td>
+                    <td>{{ user.department or '-' }}</td>
+                    <td>
+                        <span class="status-badge" style="
+                            {% if user.role == 'superadmin' %}background: var(--danger); color: white;
+                            {% elif user.role == 'user' %}background: var(--primary-100); color: var(--primary-700);
+                            {% elif user.role.startswith('approver') %}background: var(--warning-100); color: var(--warning-700);
+                            {% elif user.role == 'procurement' %}background: var(--success-100); color: var(--success-700);
+                            {% else %}background: var(--gray-100); color: var(--gray-700);{% endif %}">
+                            {{ user.role|upper }}
+                        </span>
+                    </td>
+                    <td>
+                        {% if user.approval_limit > 0 %}
+                        <strong>RM {{ "%.0f"|format(user.approval_limit) }}</strong>
+                        {% else %}
+                        <span class="text-muted">-</span>
+                        {% endif %}
+                    </td>
+                    <td>
+                        {% if user.active %}
+                        <span class="status-badge" style="background: var(--success); color: white;">
+                            ACTIVE
+                        </span>
+                        {% else %}
+                        <span class="status-badge" style="background: var(--gray-400); color: white;">
+                            INACTIVE
+                        </span>
+                        {% endif %}
+                    </td>
+                    <td>
+                        {% if user.last_login %}
+                        {{ user.last_login[:10] }}
+                        <br>
+                        <small class="text-muted">{{ user.last_login[11:16] }}</small>
+                        {% else %}
+                        <span class="text-muted">Never</span>
+                        {% endif %}
+                    </td>
+                    <td>
+                        {{ user.created_at[:10] }}
+                    </td>
+                    <td>
+                        <div class="d-flex gap-2">
+                            <button type="button" class="btn btn-sm btn-outline"
+                                    onclick="editUser('{{ user.id }}')">
+                                <i class="fas fa-edit"></i>
+                            </button>
+                            {% if user.id != session.user_id %}
+                                {% if user.active %}
+                                <button type="button" class="btn btn-sm btn-warning"
+                                        onclick="deactivateUser('{{ user.id }}', '{{ user.username }}')">
+                                    <i class="fas fa-ban"></i>
+                                </button>
+                                {% else %}
+                                <button type="button" class="btn btn-sm btn-success"
+                                        onclick="activateUser('{{ user.id }}', '{{ user.username }}')">
+                                    <i class="fas fa-check"></i>
+                                </button>
+                                {% endif %}
+                                <button type="button" class="btn btn-sm btn-danger"
+                                        onclick="deleteUser('{{ user.id }}', '{{ user.username }}')">
+                                    <i class="fas fa-trash"></i>
+                                </button>
+                            {% else %}
+                            <span class="text-muted" style="font-size: 0.75rem;">Current user</span>
+                            {% endif %}
+                        </div>
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    
+    <!-- Pagination -->
+    <div class="card-footer" style="padding: 1rem; background: var(--gray-50); 
+                                    display: flex; justify-content: space-between; align-items: center;">
+        <div class="text-muted" style="font-size: 0.875rem;">
+            Showing {{ users|length }} of {{ users|length }} users
+        </div>
+        <div>
+            <button class="btn btn-outline btn-sm" disabled>
+                <i class="fas fa-chevron-left"></i>
+            </button>
+            <span style="margin: 0 1rem; font-weight: 600;">Page 1 of 1</span>
+            <button class="btn btn-outline btn-sm" disabled>
+                <i class="fas fa-chevron-right"></i>
+            </button>
+        </div>
+    </div>
+    
+    {% else %}
+    <div class="empty-state">
+        <div class="empty-state-icon">👥</div>
+        <h3 class="empty-state-title">No Users Found</h3>
+        <p class="empty-state-description">
+            No users are registered in the system yet. Add your first user to get started.
+        </p>
+        <button class="btn btn-primary" onclick="openModal('newUserModal')">
+            <i class="fas fa-user-plus"></i> Add First User
+        </button>
+    </div>
+    {% endif %}
+</div>
+
+<!-- New User Modal -->
+<div class="modal" id="newUserModal">
+    <div class="modal-content" style="max-width: 600px;">
+        <div class="modal-header">
+            <h3 class="modal-title">
+                <i class="fas fa-user-plus"></i>
+                Add New User
+            </h3>
+            <button type="button" class="btn btn-outline btn-sm" onclick="closeModal('newUserModal')">
+                <i class="fas fa-times"></i>
+            </button>
+        </div>
+        <form method="POST" action="/admin/users" id="newUserForm">
+            <div class="modal-body">
+                <div class="form-group">
+                    <label class="form-label">Username *</label>
+                    <input type="text" class="form-control" name="username" required 
+                           placeholder="Choose a username (e.g., john.doe)">
+                </div>
+                
+                <div class="form-row">
+                    <div class="form-group">
+                        <label class="form-label">Password *</label>
+                        <input type="password" class="form-control" name="password" required 
+                               placeholder="Enter password" id="passwordField">
+                        <div class="form-text">
+                            <button type="button" class="btn btn-sm btn-outline" onclick="generatePassword()">
+                                <i class="fas fa-key"></i> Generate Password
+                            </button>
+                        </div>
+                    </div>
+                    
+                    <div class="form-group">
+                        <label class="form-label">Confirm Password *</label>
+                        <input type="password" class="form-control" id="confirmPassword" required 
+                               placeholder="Confirm password">
+                    </div>
+                </div>
+                
+                <div class="form-group">
+                    <label class="form-label">Full Name *</label>
+                    <input type="text" class="form-control" name="full_name" required 
+                           placeholder="Full name of the user">
+                </div>
+                
+                <div class="form-row">
+                    <div class="form-group">
+                        <label class="form-label">Email</label>
+                        <input type="email" class="form-control" name="email" 
+                               placeholder="user@company.com">
+                    </div>
+                    
+                    <div class="form-group">
+                        <label class="form-label">Department</label>
+                        <select class="form-control" name="department">
+                            <option value="">Select Department</option>
+                            <option value="IT">IT</option>
+                            <option value="HR">Human Resources</option>
+                            <option value="Finance">Finance</option>
+                            <option value="Operations">Operations</option>
+                            <option value="Marketing">Marketing</option>
+                            <option value="Sales">Sales</option>
+                            <option value="Procurement">Procurement</option>
+                        </select>
+                    </div>
+                </div>
+                
+                <div class="form-row">
+                    <div class="form-group">
+                        <label class="form-label">Role *</label>
+                        <select class="form-control" name="role" required id="roleSelect">
+                            <option value="">Select Role</option>
+                            <option value="user">User (Create PRs)</option>
+                            <option value="approver1">Approver 1 (Division Head/Director)</option>
+                            <option value="approver2">Approver 2 (Group CFO)</option>
+                            <option value="approver3">Approver 3 (Group CEO)</option>
+                            <option value="approver4">Approver 4 (Group MD)</option>
+                            <option value="procurement">Procurement Officer</option>
+                            <option value="superadmin">Super Administrator</option>
+                        </select>
+                    </div>
+                    
+                    <div class="form-group">
+                        <label class="form-label">Approval Limit (RM)</label>
+                        <input type="number" class="form-control" name="approval_limit" 
+                               id="approvalLimit" min="0" step="1000" value="0"
+                               placeholder="0 for no approval authority">
+                        <div class="form-text" id="limitHelp">
+                            Set approval limit for approver roles
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="form-group">
+                    <div class="budget-info">
+                        <div style="display: flex; align-items: center; gap: 1rem;">
+                            <i class="fas fa-info-circle" style="color: var(--info);"></i>
+                            <div>
+                                <strong>Role Guidelines</strong>
+                                <p style="margin: 0.5rem 0 0; font-size: 0.875rem;">
+                                    • <strong>User:</strong> Can create and submit PRs<br>
+                                    • <strong>Approver 1-4:</strong> Approve PRs based on amount thresholds<br>
+                                    • <strong>Procurement:</strong> Process approved PRs<br>
+                                    • <strong>Super Admin:</strong> Full system access
+                                </p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" onclick="closeModal('newUserModal')">
+                    Cancel
+                </button>
+                <button type="submit" class="btn btn-primary">
+                    <i class="fas fa-save"></i> Create User
+                </button>
+            </div>
+        </form>
+    </div>
+</div>
+
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    // Password generation
+    function generatePassword() {
+        const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789!@#$%^&*';
+        let password = '';
+        for (let i = 0; i < 12; i++) {
+            password += chars.charAt(Math.floor(Math.random() * chars.length));
+        }
+        document.getElementById('passwordField').value = password;
+        document.getElementById('confirmPassword').value = password;
+    }
+    
+    // Role-based approval limit handling
+    document.getElementById('roleSelect').addEventListener('change', function() {
+        const role = this.value;
+        const limitField = document.getElementById('approvalLimit');
+        const helpText = document.getElementById('limitHelp');
+        
+        // Set default limits based on role
+        const defaults = {
+            'approver1': 10000,
+            'approver2': 50000,
+            'approver3': 100000,
+            'approver4': 200000,
+            'user': 0,
+            'procurement': 0,
+            'superadmin': 0
+        };
+        
+        if (role in defaults) {
+            limitField.value = defaults[role];
+        }
+        
+        // Update help text
+        if (role.startsWith('approver')) {
+            helpText.innerHTML = `
+                <strong>Default approval limits:</strong><br>
+                • Approver 1: RM10,000 (Division Head/Director)<br>
+                • Approver 2: RM50,000 (Group CFO)<br>
+                • Approver 3: RM100,000 (Group CEO)<br>
+                • Approver 4: RM200,000 (Group MD)
+            `;
+        } else {
+            helpText.textContent = 'Set approval limit for approver roles';
+        }
+    });
+    
+    // Form validation
+    document.getElementById('newUserForm').addEventListener('submit', function(e) {
+        const password = document.getElementById('passwordField').value;
+        const confirmPassword = document.getElementById('confirmPassword').value;
+        
+        if (password !== confirmPassword) {
+            e.preventDefault();
+            alert('Passwords do not match!');
+            return false;
+        }
+        
+        if (password.length < 8) {
+            e.preventDefault();
+            alert('Password must be at least 8 characters long.');
+            return false;
+        }
+        
+        return true;
+    });
+    
+    // User management functions
+    function editUser(userId) {
+        // In production, load user data and show edit modal
+        alert(`Edit user ${userId} - In production, this would open an edit modal.`);
+    }
+    
+    function deactivateUser(userId, username) {
+        if (confirm(`Deactivate user "${username}"? They will not be able to log in.`)) {
+            fetch(`/api/users/${userId}/deactivate`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                }
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    alert('User deactivated successfully!');
+                    location.reload();
+                }
+            })
+            .catch(error => {
+                console.error('Error deactivating user:', error);
+                alert('Failed to deactivate user.');
+            });
+        }
+    }
+    
+    function activateUser(userId, username) {
+        if (confirm(`Activate user "${username}"?`)) {
+            fetch(`/api/users/${userId}/activate`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                }
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    alert('User activated successfully!');
+                    location.reload();
+                }
+            })
+            .catch(error => {
+                console.error('Error activating user:', error);
+                alert('Failed to activate user.');
+            });
+        }
+    }
+    
+    function deleteUser(userId, username) {
+        if (confirm(`Delete user "${username}"? This action cannot be undone.`)) {
+            fetch(`/api/users/${userId}`, {
+                method: 'DELETE',
+                headers: {
+                    'Content-Type': 'application/json',
+                }
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    alert('User deleted successfully!');
+                    location.reload();
+                }
+            })
+            .catch(error => {
+                console.error('Error deleting user:', error);
+                alert('Failed to delete user.');
+            });
+        }
+    }
+    
+    function exportUsers() {
+        alert('Exporting user list... (In production, this would generate an Excel/CSV file)');
+        // In production, implement actual export functionality
+    }
+</script>
+{% endblock %}

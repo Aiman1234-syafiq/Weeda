@@ -1,0 +1,273 @@
+{% extends "base.html" %}
+
+{% block title %}Budget Exception Approval{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <div>
+        <h1 class="page-title">
+            <i class="fas fa-exclamation-triangle" style="color: var(--warning);"></i>
+            Budget Exception Request
+        </h1>
+        <p class="page-subtitle">
+            Review and approve/reject budget exception request for PR {{ pr.pr_no }}
+        </p>
+    </div>
+    <div class="action-buttons">
+        <a href="/approve" class="btn btn-secondary">
+            <i class="fas fa-arrow-left"></i> Back to Approvals
+        </a>
+    </div>
+</div>
+
+<div class="card mb-4">
+    <div class="card-header">
+        <h3 class="card-title">PR Summary</h3>
+    </div>
+    <div style="padding: 1.5rem;">
+        <div class="form-row">
+            <div class="form-group">
+                <label class="form-label">PR Number</label>
+                <div style="font-size: 1.25rem; font-weight: 600; color: var(--primary-700);">
+                    {{ pr.pr_no }}
+                </div>
+            </div>
+            
+            <div class="form-group">
+                <label class="form-label">Requester</label>
+                <div>{{ pr.requester_name }}</div>
+                <div class="text-muted" style="font-size: 0.875rem;">
+                    {{ pr.department }} Department
+                </div>
+            </div>
+            
+            <div class="form-group">
+                <label class="form-label">Total Amount</label>
+                <div style="font-size: 1.5rem; font-weight: 700; color: var(--danger);">
+                    RM {{ "%.2f"|format(pr.total_amount) }}
+                </div>
+            </div>
+        </div>
+        
+        <div class="form-group">
+            <label class="form-label">Purpose</label>
+            <div style="background: var(--gray-50); padding: 1rem; border-radius: 8px;">
+                {{ pr.purpose }}
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Budget Information -->
+<div class="card mb-4">
+    <div class="card-header">
+        <h3 class="card-title">
+            <i class="fas fa-coins"></i>
+            Budget Analysis
+        </h3>
+    </div>
+    <div style="padding: 1.5rem;">
+        {% if budget_info %}
+        <div class="form-row">
+            <div class="form-group">
+                <label class="form-label">Budget Category</label>
+                <div style="font-weight: 600;">{{ pr.budget_category }}</div>
+            </div>
+            
+            <div class="form-group">
+                <label class="form-label">Allocated Budget</label>
+                <div>RM {{ "%.2f"|format(budget_info.allocated_amount) }}</div>
+            </div>
+            
+            <div class="form-group">
+                <label class="form-label">Already Spent</label>
+                <div>RM {{ "%.2f"|format(budget_info.spent_amount) }}</div>
+            </div>
+            
+            <div class="form-group">
+                <label class="form-label">Remaining Budget</label>
+                <div style="font-size: 1.25rem; font-weight: 600; 
+                          color: {% if budget_info.remaining_amount >= pr.total_amount %}var(--success){% else %}var(--danger){% endif %};">
+                    RM {{ "%.2f"|format(budget_info.remaining_amount) }}
+                </div>
+            </div>
+        </div>
+        
+        <div class="budget-warning" style="margin-top: 1.5rem;">
+            <div style="display: flex; align-items: flex-start; gap: 1rem;">
+                <i class="fas fa-exclamation-triangle" style="color: var(--warning); font-size: 1.5rem;"></i>
+                <div>
+                    <strong>Budget Shortfall Detected</strong>
+                    <p style="margin: 0.5rem 0;">
+                        This purchase requires RM {{ "%.2f"|format(pr.total_amount) }} but only 
+                        RM {{ "%.2f"|format(budget_info.remaining_amount) }} is available in the budget.
+                    </p>
+                    <p style="margin: 0.5rem 0; font-weight: 600;">
+                        Shortfall: RM {{ "%.2f"|format(pr.total_amount - budget_info.remaining_amount) }}
+                    </p>
+                </div>
+            </div>
+        </div>
+        {% else %}
+        <div class="empty-state" style="padding: 2rem;">
+            <div class="empty-state-icon">💰</div>
+            <h3 class="empty-state-title">No Budget Category Selected</h3>
+            <p class="empty-state-description">
+                The requester did not select a budget category for this purchase.
+            </p>
+        </div>
+        {% endif %}
+    </div>
+</div>
+
+<!-- Items List -->
+<div class="card mb-4">
+    <div class="card-header">
+        <h3 class="card-title">
+            <i class="fas fa-list-alt"></i>
+            Purchase Items
+        </h3>
+        <span class="badge" style="background: var(--primary-100); color: var(--primary-700); 
+                                   padding: 0.5rem 1rem; border-radius: 20px;">
+            {{ items|length }} items
+        </span>
+    </div>
+    <div class="table-responsive">
+        <table class="table">
+            <thead>
+                <tr>
+                    <th>#</th>
+                    <th>Description</th>
+                    <th>Qty</th>
+                    <th>Unit Price</th>
+                    <th>Total</th>
+                    <th>Catalog #</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for item in items %}
+                <tr>
+                    <td>{{ item.item_no }}</td>
+                    <td>{{ item.item_description }}</td>
+                    <td>{{ item.quantity }} {{ item.unit_of_measure }}</td>
+                    <td>RM {{ "%.2f"|format(item.unit_price) }}</td>
+                    <td><strong>RM {{ "%.2f"|format(item.total_price) }}</strong></td>
+                    <td>{{ item.catalog_number or '-' }}</td>
+                </tr>
+                {% endfor %}
+                <tr style="background: var(--gray-50);">
+                    <td colspan="4" style="text-align: right; font-weight: 600;">Grand Total:</td>
+                    <td colspan="2" style="font-size: 1.25rem; font-weight: 700; color: var(--danger);">
+                        RM {{ "%.2f"|format(pr.total_amount) }}
+                    </td>
+                </tr>
+            </tbody>
+        </table>
+    </div>
+</div>
+
+<!-- Approval Form -->
+<div class="card">
+    <div class="card-header">
+        <h3 class="card-title">
+            <i class="fas fa-gavel"></i>
+            Budget Exception Decision
+        </h3>
+    </div>
+    
+    <form method="POST" action="/pr/{{ pr.id }}/budget-exception">
+        <div style="padding: 1.5rem;">
+            <div class="form-group">
+                <label for="comments" class="form-label">
+                    Comments / Justification
+                </label>
+                <textarea class="form-control" id="comments" name="comments" 
+                          rows="4" placeholder="Provide comments for your decision..."
+                          required></textarea>
+                <div class="form-text">
+                    Explain your decision. This will be visible to the requester.
+                </div>
+            </div>
+            
+            <div class="form-group">
+                <label class="form-label">Requestor's Justification</label>
+                <div style="background: var(--gray-50); padding: 1rem; border-radius: 8px; font-style: italic;">
+                    {% if pr.budget_exception_notes %}
+                    {{ pr.budget_exception_notes }}
+                    {% else %}
+                    No justification provided by requestor.
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+        
+        <div class="card-footer" style="padding: 1.5rem; background: var(--gray-50); 
+                                        display: flex; justify-content: space-between; align-items: center;">
+            <div>
+                <strong>Current Status:</strong>
+                <span class="status-badge status-budget-pending" style="margin-left: 0.5rem;">
+                    BUDGET EXCEPTION PENDING
+                </span>
+            </div>
+            
+            <div class="action-buttons">
+                <button type="submit" name="action" value="reject" 
+                        class="btn btn-danger"
+                        onclick="return confirm('Reject this budget exception request?')">
+                    <i class="fas fa-times"></i> Reject Exception
+                </button>
+                
+                <button type="submit" name="action" value="approve" 
+                        class="btn btn-success"
+                        onclick="return confirm('Approve this budget exception request?')">
+                    <i class="fas fa-check"></i> Approve Exception
+                </button>
+            </div>
+        </div>
+    </form>
+</div>
+
+<!-- Approval Guidelines -->
+<div class="card mt-4">
+    <div class="card-header">
+        <h3 class="card-title">
+            <i class="fas fa-book"></i>
+            Budget Exception Guidelines
+        </h3>
+    </div>
+    <div style="padding: 1.5rem;">
+        <ul style="list-style: none; padding: 0;">
+            <li style="margin-bottom: 0.75rem; display: flex; align-items: flex-start; gap: 0.75rem;">
+                <i class="fas fa-check-circle" style="color: var(--success); margin-top: 0.25rem;"></i>
+                <div>
+                    <strong>Approve if:</strong>
+                    <div class="text-muted" style="font-size: 0.875rem;">
+                        The purchase is critical for business operations, emergency situation, 
+                        or strategic initiative with proper justification.
+                    </div>
+                </div>
+            </li>
+            <li style="margin-bottom: 0.75rem; display: flex; align-items: flex-start; gap: 0.75rem;">
+                <i class="fas fa-times-circle" style="color: var(--danger); margin-top: 0.25rem;"></i>
+                <div>
+                    <strong>Reject if:</strong>
+                    <div class="text-muted" style="font-size: 0.875rem;">
+                        The purchase is non-essential, can be postponed, or lacks proper 
+                        business justification. Consider requesting budget reallocation instead.
+                    </div>
+                </div>
+            </li>
+            <li style="display: flex; align-items: flex-start; gap: 0.75rem;">
+                <i class="fas fa-info-circle" style="color: var(--info); margin-top: 0.25rem;"></i>
+                <div>
+                    <strong>Note:</strong>
+                    <div class="text-muted" style="font-size: 0.875rem;">
+                        Budget exception approval does NOT guarantee final PR approval. 
+                        The PR must still go through normal approval channels.
+                    </div>
+                </div>
+            </li>
+        </ul>
+    </div>
+</div>
+{% endblock %}

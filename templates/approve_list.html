@@ -1,0 +1,64 @@
+{% extends "base.html" %}
+
+{% block title %}Pending Approvals{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <h1>Pending Approvals</h1>
+    <p class="page-description">Purchase Requisitions waiting for your approval</p>
+</div>
+
+<div class="card">
+    {% if prs %}
+    <div class="table-responsive">
+        <table>
+            <thead>
+                <tr>
+                    <th>PR No</th>
+                    <th>Requester</th>
+                    <th>Department</th>
+                    <th>Vendor</th>
+                    <th>Amount</th>
+                    <th>Purpose</th>
+                    <th>Created</th>
+                    <th>Actions</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for pr in prs %}
+                <tr>
+                    <td><strong>{{ pr.pr_no }}</strong></td>
+                    <td>{{ pr.requester_name }}</td>
+                    <td>{{ pr.department }}</td>
+                    <td>{{ pr.vendor_name }}</td>
+                    <td><strong>${{ "%.2f"|format(pr.total_amount) }}</strong></td>
+                    <td>{{ pr.purpose[:50] }}{% if pr.purpose|length > 50 %}...{% endif %}</td>
+                    <td>{{ pr.created_at[:10] }}</td>
+                    <td>
+                        <div class="d-flex gap-2">
+                            <a href="/approve/{{ pr.id }}/approve" 
+                               class="btn btn-sm btn-success"
+                               onclick="return confirm('Approve this PR?')">
+                               Approve
+                            </a>
+                            <a href="/approve/{{ pr.id }}/reject" 
+                               class="btn btn-sm btn-danger"
+                               onclick="return confirm('Reject this PR?')">
+                               Reject
+                            </a>
+                        </div>
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    {% else %}
+    <div class="empty-state">
+        <div class="empty-state-icon">✅</div>
+        <h3>No Pending Approvals</h3>
+        <p>All purchase requisitions have been processed.</p>
+    </div>
+    {% endif %}
+</div>
+{% endblock %}

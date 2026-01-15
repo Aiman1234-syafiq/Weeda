@@ -1,0 +1,53 @@
+{% extends "base.html" %}
+
+{% block title %}Procurement - Approved PRs{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <h1>Approved Purchase Requisitions</h1>
+    <p class="page-description">Ready for procurement processing</p>
+</div>
+
+<div class="card">
+    {% if prs %}
+    <div class="table-responsive">
+        <table>
+            <thead>
+                <tr>
+                    <th>PR No</th>
+                    <th>Requester</th>
+                    <th>Department</th>
+                    <th>Vendor</th>
+                    <th>Amount</th>
+                    <th>Purpose</th>
+                    <th>Approved Date</th>
+                    <th>Status</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for pr in prs %}
+                <tr>
+                    <td><strong>{{ pr.pr_no }}</strong></td>
+                    <td>{{ pr.requester_name }}</td>
+                    <td>{{ pr.department }}</td>
+                    <td>{{ pr.vendor_name }}</td>
+                    <td><strong>${{ "%.2f"|format(pr.total_amount) }}</strong></td>
+                    <td>{{ pr.purpose[:50] }}{% if pr.purpose|length > 50 %}...{% endif %}</td>
+                    <td>{{ pr.created_at[:10] }}</td>
+                    <td>
+                        <span class="status-badge status-approved">APPROVED</span>
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    {% else %}
+    <div class="empty-state">
+        <div class="empty-state-icon">📦</div>
+        <h3>No Approved PRs</h3>
+        <p>There are no approved purchase requisitions at the moment.</p>
+    </div>
+    {% endif %}
+</div>
+{% endblock %}

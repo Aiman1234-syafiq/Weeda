@@ -1,0 +1,864 @@
+{% extends "base.html" %}
+
+{% block title %}Create New PR{% endblock %}
+
+{% block extra_css %}
+<style>
+    .form-section {
+        background: white;
+        border-radius: var(--border-radius);
+        padding: 1.5rem;
+        margin-bottom: 1.5rem;
+        border: 1px solid var(--gray-200);
+    }
+    
+    .section-title {
+        font-size: 1.1rem;
+        font-weight: 600;
+        color: var(--gray-800);
+        margin-bottom: 1.5rem;
+        padding-bottom: 0.75rem;
+        border-bottom: 2px solid var(--gray-100);
+        display: flex;
+        align-items: center;
+        gap: 0.75rem;
+    }
+    
+    .items-table {
+        width: 100%;
+        border-collapse: collapse;
+        margin-bottom: 1rem;
+    }
+    
+    .items-table th {
+        background: var(--gray-50);
+        padding: 0.75rem;
+        text-align: left;
+        font-weight: 600;
+        color: var(--gray-700);
+        border: 1px solid var(--gray-200);
+    }
+    
+    .items-table td {
+        padding: 0.75rem;
+        border: 1px solid var(--gray-200);
+        vertical-align: top;
+    }
+    
+    .items-table input[type="text"],
+    .items-table input[type="number"],
+    .items-table textarea {
+        width: 100%;
+        padding: 0.5rem;
+        border: 1px solid var(--gray-300);
+        border-radius: 4px;
+        font-size: 0.875rem;
+    }
+    
+    .remove-item {
+        background: var(--danger);
+        color: white;
+        border: none;
+        width: 30px;
+        height: 30px;
+        border-radius: 4px;
+        cursor: pointer;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+    }
+    
+    .remove-item:hover {
+        background: #dc2626;
+    }
+    
+    .budget-info {
+        background: var(--gray-50);
+        padding: 1rem;
+        border-radius: 8px;
+        margin-top: 1rem;
+        border-left: 4px solid var(--primary-500);
+    }
+    
+    .budget-warning {
+        background: #fef3c7;
+        padding: 1rem;
+        border-radius: 8px;
+        margin-top: 1rem;
+        border-left: 4px solid var(--warning);
+    }
+    
+    .approval-path {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: 1rem;
+        margin: 2rem 0;
+        flex-wrap: wrap;
+    }
+    
+    .approval-step {
+        background: var(--primary-100);
+        padding: 1rem 1.5rem;
+        border-radius: var(--border-radius);
+        text-align: center;
+        min-width: 150px;
+        position: relative;
+    }
+    
+    .approval-step.current {
+        background: var(--primary-500);
+        color: white;
+        transform: scale(1.05);
+        box-shadow: 0 10px 15px -3px rgba(59, 130, 246, 0.3);
+    }
+    
+    .approval-step:not(:last-child)::after {
+        content: "→";
+        position: absolute;
+        right: -1rem;
+        top: 50%;
+        transform: translateY(-50%);
+        color: var(--gray-400);
+    }
+    
+    .step-title {
+        font-weight: 600;
+        font-size: 0.875rem;
+    }
+    
+    .step-role {
+        font-size: 0.75rem;
+        color: var(--gray-600);
+        margin-top: 0.25rem;
+    }
+    
+    .approval-step.current .step-role {
+        color: rgba(255, 255, 255, 0.9);
+    }
+    
+    .total-summary {
+        background: linear-gradient(135deg, var(--primary-600), var(--primary-700));
+        color: white;
+        padding: 1.5rem;
+        border-radius: var(--border-radius);
+        margin: 2rem 0;
+    }
+    
+    .total-amount {
+        font-size: 2.5rem;
+        font-weight: 700;
+        margin: 0.5rem 0;
+    }
+    
+    .currency-selector {
+        display: flex;
+        gap: 0.5rem;
+        margin-top: 1rem;
+    }
+    
+    .currency-btn {
+        padding: 0.5rem 1rem;
+        border: 2px solid var(--gray-300);
+        background: white;
+        border-radius: 6px;
+        cursor: pointer;
+        font-weight: 500;
+        transition: var(--transition);
+    }
+    
+    .currency-btn.active {
+        border-color: var(--primary-500);
+        background: var(--primary-50);
+        color: var(--primary-700);
+    }
+    
+    .vendor-card {
+        background: var(--gray-50);
+        padding: 1rem;
+        border-radius: 8px;
+        border: 1px solid var(--gray-200);
+        cursor: pointer;
+        transition: var(--transition);
+    }
+    
+    .vendor-card:hover {
+        background: var(--primary-50);
+        border-color: var(--primary-300);
+    }
+    
+    .vendor-card.selected {
+        background: var(--primary-100);
+        border-color: var(--primary-500);
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <div>
+        <h1 class="page-title">
+            <i class="fas fa-file-contract" style="color: var(--primary-600);"></i>
+            Create New Purchase Requisition
+        </h1>
+        <p class="page-subtitle">
+            Complete all sections below to create a new PR. Fields marked with * are required.
+        </p>
+    </div>
+    <div class="action-buttons">
+        <a href="/dashboard" class="btn btn-secondary">
+            <i class="fas fa-arrow-left"></i> Cancel
+        </a>
+    </div>
+</div>
+
+<form method="POST" action="/pr/new" id="prForm" onsubmit="return validatePRForm()">
+    <!-- Section 1: Basic Information -->
+    <div class="form-section">
+        <div class="section-title">
+            <i class="fas fa-info-circle"></i>
+            1. Basic Information
+        </div>
+        
+        <div class="form-row">
+            <div class="form-group">
+                <label for="requester_name" class="form-label">
+                    Requester Name *
+                </label>
+                <input type="text" class="form-control" id="requester_name" 
+                       name="requester_name" value="{{ session.name }}" required readonly>
+            </div>
+            
+            <div class="form-group">
+                <label for="department" class="form-label">
+                    Department *
+                </label>
+                <select class="form-control" id="department" name="department" required>
+                    <option value="">Select Department</option>
+                    {% for dept in departments %}
+                    <option value="{{ dept }}" {% if dept == session.department %}selected{% endif %}>
+                        {{ dept }}
+                    </option>
+                    {% endfor %}
+                </select>
+            </div>
+            
+            <div class="form-group">
+                <label for="fiscal_year" class="form-label">
+                    Fiscal Year *
+                </label>
+                <select class="form-control" id="fiscal_year" name="fiscal_year" required>
+                    {% set current_year = datetime.now().year %}
+                    <option value="{{ current_year }}">{{ current_year }}</option>
+                    <option value="{{ current_year + 1 }}">{{ current_year + 1 }}</option>
+                </select>
+            </div>
+        </div>
+        
+        <div class="form-group">
+            <label for="purpose" class="form-label">
+                Purpose / Description *
+                <span class="text-muted" style="font-weight: normal;">(What you need and why)</span>
+            </label>
+            <textarea class="form-control" id="purpose" name="purpose" 
+                      rows="3" required placeholder="Describe what you need to purchase and why it's needed..."></textarea>
+            <div class="form-text">Be specific about the business need and expected benefits.</div>
+        </div>
+        
+        <div class="form-row">
+            <div class="form-group">
+                <label for="priority" class="form-label">
+                    Priority Level
+                </label>
+                <select class="form-control" id="priority" name="priority">
+                    <option value="LOW">Low</option>
+                    <option value="NORMAL" selected>Normal</option>
+                    <option value="HIGH">High</option>
+                    <option value="URGENT">Urgent</option>
+                </select>
+            </div>
+            
+            <div class="form-group">
+                <label for="budget_category" class="form-label">
+                    Budget Category
+                </label>
+                <select class="form-control" id="budget_category" name="budget_category">
+                    <option value="">Select Budget Category</option>
+                    {% for category in budget_categories %}
+                    <option value="{{ category }}">{{ category }}</option>
+                    {% endfor %}
+                </select>
+                <div class="form-text">Select the budget category for this purchase</div>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Section 2: Budget Check (Dynamic) -->
+    <div class="form-section" id="budgetSection" style="display: none;">
+        <div class="section-title">
+            <i class="fas fa-coins"></i>
+            2. Budget Availability Check
+        </div>
+        
+        <div id="budgetResult">
+            <div class="budget-info">
+                <div style="display: flex; align-items: center; gap: 1rem; margin-bottom: 0.5rem;">
+                    <i class="fas fa-sync-alt fa-spin"></i>
+                    <span>Checking budget availability...</span>
+                </div>
+            </div>
+        </div>
+        
+        <div id="budgetWarning" class="budget-warning" style="display: none;">
+            <div style="display: flex; align-items: flex-start; gap: 1rem;">
+                <i class="fas fa-exclamation-triangle" style="color: var(--warning); font-size: 1.5rem;"></i>
+                <div>
+                    <strong>Budget Exception Required</strong>
+                    <p style="margin: 0.5rem 0;">This purchase exceeds the available budget. You'll need budget exception approval before submission.</p>
+                    <small class="text-muted">Total amount exceeds remaining budget for selected category.</small>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Section 3: Component List -->
+    <div class="form-section">
+        <div class="section-title">
+            <i class="fas fa-list-alt"></i>
+            3. Component List
+            <span class="text-muted" style="font-weight: normal; font-size: 0.875rem; margin-left: auto;">
+                Add all items to be purchased
+            </span>
+        </div>
+        
+        <div class="table-responsive">
+            <table class="items-table" id="itemsTable">
+                <thead>
+                    <tr>
+                        <th style="width: 5%;">#</th>
+                        <th style="width: 30%;">Item Description *</th>
+                        <th style="width: 10%;">Qty *</th>
+                        <th style="width: 15%;">Unit Price *</th>
+                        <th style="width: 15%;">Total Price</th>
+                        <th style="width: 15%;">Catalog #</th>
+                        <th style="width: 5%;"></th>
+                    </tr>
+                </thead>
+                <tbody id="itemsBody">
+                    <!-- Items will be added here dynamically -->
+                </tbody>
+            </table>
+        </div>
+        
+        <div class="text-center mt-2">
+            <button type="button" class="btn btn-outline" onclick="addNewItem()">
+                <i class="fas fa-plus"></i> Add Item
+            </button>
+        </div>
+        
+        <div class="total-summary" id="totalSummary" style="display: none;">
+            <div style="display: flex; justify-content: space-between; align-items: center;">
+                <div>
+                    <div style="font-size: 0.875rem; opacity: 0.9;">Total Amount</div>
+                    <div class="total-amount" id="totalAmount">RM 0.00</div>
+                    <div style="font-size: 0.875rem; opacity: 0.9;">
+                        <span id="itemCount">0</span> items
+                    </div>
+                </div>
+                <div class="currency-selector">
+                    <button type="button" class="currency-btn active" data-currency="MYR">MYR</button>
+                    <button type="button" class="currency-btn" data-currency="USD">USD</button>
+                    <button type="button" class="currency-btn" data-currency="SGD">SGD</button>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Hidden field for items JSON -->
+        <input type="hidden" name="items" id="itemsJson" value="[]">
+    </div>
+    
+    <!-- Section 4: Vendor & Payment Information -->
+    <div class="form-section">
+        <div class="section-title">
+            <i class="fas fa-building"></i>
+            4. Vendor & Payment Information
+        </div>
+        
+        <div class="form-row">
+            <div class="form-group">
+                <label for="vendor_name" class="form-label">
+                    Vendor Name *
+                </label>
+                <select class="form-control" id="vendor_name" name="vendor_name" required>
+                    <option value="">Select Vendor</option>
+                    {% for vendor in vendors %}
+                    <option value="{{ vendor.vendor_name }}" data-code="{{ vendor.vendor_code }}">
+                        {{ vendor.vendor_name }} ({{ vendor.vendor_code }})
+                    </option>
+                    {% endfor %}
+                    <option value="other">+ Add New Vendor</option>
+                </select>
+            </div>
+            
+            <div class="form-group">
+                <label for="vendor_code" class="form-label">
+                    Vendor Code
+                </label>
+                <input type="text" class="form-control" id="vendor_code" 
+                       name="vendor_code" placeholder="Vendor code or registration number">
+            </div>
+        </div>
+        
+        <div class="form-group">
+            <label for="vendor_contact" class="form-label">
+                Vendor Contact Information
+            </label>
+            <input type="text" class="form-control" id="vendor_contact" 
+                   name="vendor_contact" placeholder="Contact person, email, phone">
+        </div>
+        
+        <div class="form-row">
+            <div class="form-group">
+                <label for="delivery_address" class="form-label">
+                    Delivery Address
+                </label>
+                <textarea class="form-control" id="delivery_address" name="delivery_address" 
+                          rows="2" placeholder="Where should items be delivered?"></textarea>
+            </div>
+            
+            <div class="form-group">
+                <label for="payment_terms" class="form-label">
+                    Payment Terms
+                </label>
+                <select class="form-control" id="payment_terms" name="payment_terms">
+                    <option value="">Select Payment Terms</option>
+                    <option value="NET15">NET 15</option>
+                    <option value="NET30" selected>NET 30</option>
+                    <option value="NET45">NET 45</option>
+                    <option value="NET60">NET 60</option>
+                    <option value="UPON_DELIVERY">Upon Delivery</option>
+                    <option value="ADVANCE_50">50% Advance, 50% Upon Delivery</option>
+                </select>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Section 5: Financial Details -->
+    <div class="form-section">
+        <div class="section-title">
+            <i class="fas fa-calculator"></i>
+            5. Financial Details
+        </div>
+        
+        <div class="form-row">
+            <div class="form-group">
+                <label for="currency" class="form-label">
+                    Currency *
+                </label>
+                <select class="form-control" id="currency" name="currency" required>
+                    <option value="MYR" selected>Malaysian Ringgit (MYR)</option>
+                    <option value="USD">US Dollar (USD)</option>
+                    <option value="SGD">Singapore Dollar (SGD)</option>
+                    <option value="EUR">Euro (EUR)</option>
+                </select>
+            </div>
+            
+            <div class="form-group">
+                <label for="tax_amount" class="form-label">
+                    Tax Amount (if applicable)
+                </label>
+                <input type="number" class="form-control" id="tax_amount" 
+                       name="tax_amount" step="0.01" min="0" value="0">
+                <div class="form-text">Enter tax amount separately if not included in item prices</div>
+            </div>
+        </div>
+        
+        <div class="form-group">
+            <div class="budget-info">
+                <div style="display: flex; justify-content: space-between; align-items: center;">
+                    <div>
+                        <strong>Approval Path Based on Total Amount</strong>
+                        <p style="margin: 0.5rem 0 0; font-size: 0.875rem;">
+                            Based on the flowchart: ≤ RM10,000 (Approver 1) • RM11,000-49,999 (Approver 2 → 3) • ≥ RM50,000 (Approver 4)
+                        </p>
+                    </div>
+                    <div style="text-align: right;">
+                        <div style="font-size: 0.875rem;">Estimated Approval Path</div>
+                        <div style="font-size: 1.25rem; font-weight: 600;" id="approvalPathText">-</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Section 6: Approval Path Visualization -->
+    <div class="form-section">
+        <div class="section-title">
+            <i class="fas fa-project-diagram"></i>
+            6. Approval Process
+        </div>
+        
+        <div class="approval-path" id="approvalVisualization">
+            <!-- Dynamic approval path will be inserted here -->
+        </div>
+        
+        <div style="text-align: center; margin-top: 2rem;">
+            <div style="background: var(--gray-100); padding: 1rem; border-radius: 8px; display: inline-block;">
+                <i class="fas fa-info-circle" style="color: var(--primary-600); margin-right: 0.5rem;"></i>
+                <span>This PR will follow the approval path shown above based on total amount and budget status.</span>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Form Actions -->
+    <div class="card" style="background: var(--gray-50);">
+        <div style="padding: 1.5rem; display: flex; justify-content: space-between; align-items: center;">
+            <div>
+                <strong>Ready to Submit?</strong>
+                <p style="margin: 0.5rem 0 0; font-size: 0.875rem; color: var(--gray-600);">
+                    Review all information before saving. You can submit for approval later.
+                </p>
+            </div>
+            <div class="action-buttons">
+                <button type="submit" class="btn btn-primary btn-lg">
+                    <i class="fas fa-save"></i> Save as Draft
+                </button>
+            </div>
+        </div>
+    </div>
+</form>
+
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    // Item counter
+    let itemCounter = 0;
+    let items = [];
+    let currency = 'MYR';
+    
+    // Initialize with one empty item
+    document.addEventListener('DOMContentLoaded', function() {
+        addNewItem();
+        updateTotal();
+        
+        // Currency selector
+        document.querySelectorAll('.currency-btn').forEach(btn => {
+            btn.addEventListener('click', function() {
+                document.querySelectorAll('.currency-btn').forEach(b => b.classList.remove('active'));
+                this.classList.add('active');
+                currency = this.dataset.currency;
+                document.getElementById('currency').value = currency;
+                updateTotal();
+            });
+        });
+        
+        // Vendor selection
+        document.getElementById('vendor_name').addEventListener('change', function() {
+            const selectedOption = this.options[this.selectedIndex];
+            if (selectedOption.dataset.code) {
+                document.getElementById('vendor_code').value = selectedOption.dataset.code;
+            }
+            if (selectedOption.value === 'other') {
+                alert('Please enter vendor details manually below.');
+                document.getElementById('vendor_code').value = '';
+                document.getElementById('vendor_code').focus();
+            }
+        });
+        
+        // Budget category change
+        document.getElementById('budget_category').addEventListener('change', checkBudget);
+        document.getElementById('department').addEventListener('change', checkBudget);
+        
+        // Auto-calculate approval path
+        setInterval(calculateApprovalPath, 1000);
+    });
+    
+    // Add new item row
+    function addNewItem() {
+        itemCounter++;
+        const tbody = document.getElementById('itemsBody');
+        const row = document.createElement('tr');
+        row.id = `itemRow_${itemCounter}`;
+        
+        row.innerHTML = `
+            <td>${itemCounter}</td>
+            <td>
+                <input type="text" class="item-description" 
+                       placeholder="Item description..." 
+                       data-field="description" required>
+                <textarea class="item-specs" 
+                          placeholder="Specifications (optional)" 
+                          data-field="specifications" 
+                          style="margin-top: 0.5rem; font-size: 0.75rem; height: 40px;"></textarea>
+            </td>
+            <td>
+                <input type="number" class="item-quantity" 
+                       min="1" value="1" step="1" 
+                       data-field="quantity" required>
+                <select class="item-uom" data-field="uom" 
+                        style="margin-top: 0.5rem; width: 100%; font-size: 0.75rem;">
+                    <option value="UNIT">Unit</option>
+                    <option value="SET">Set</option>
+                    <option value="PAIR">Pair</option>
+                    <option value="DOZEN">Dozen</option>
+                    <option value="METER">Meter</option>
+                    <option value="KG">Kilogram</option>
+                    <option value="LITER">Liter</option>
+                    <option value="HOUR">Hour</option>
+                </select>
+            </td>
+            <td>
+                <div style="display: flex; align-items: center;">
+                    <span style="margin-right: 0.5rem;">${currency}</span>
+                    <input type="number" class="item-unit-price" 
+                           min="0" step="0.01" value="0" 
+                           data-field="unit_price" required>
+                </div>
+            </td>
+            <td>
+                <span class="item-total" data-currency="${currency}">${currency} 0.00</span>
+            </td>
+            <td>
+                <input type="text" class="item-catalog" 
+                       placeholder="Catalog/Part #" 
+                       data-field="catalog_number">
+            </td>
+            <td>
+                ${itemCounter > 1 ? '<button type="button" class="remove-item" onclick="removeItem(' + itemCounter + ')"><i class="fas fa-times"></i></button>' : ''}
+            </td>
+        `;
+        
+        tbody.appendChild(row);
+        
+        // Add event listeners to new row
+        const inputs = row.querySelectorAll('input, select, textarea');
+        inputs.forEach(input => {
+            input.addEventListener('input', updateItem);
+            input.addEventListener('change', updateItem);
+        });
+        
+        updateTotal();
+    }
+    
+    // Update item calculations
+    function updateItem(event) {
+        const row = event.target.closest('tr');
+        if (!row) return;
+        
+        const quantity = parseFloat(row.querySelector('.item-quantity').value) || 0;
+        const unitPrice = parseFloat(row.querySelector('.item-unit-price').value) || 0;
+        const total = quantity * unitPrice;
+        
+        row.querySelector('.item-total').textContent = `${currency} ${total.toFixed(2)}`;
+        
+        updateTotal();
+        checkBudget();
+        calculateApprovalPath();
+    }
+    
+    // Remove item
+    function removeItem(itemId) {
+        const row = document.getElementById(`itemRow_${itemId}`);
+        if (row) {
+            row.remove();
+            // Renumber remaining items
+            const rows = document.querySelectorAll('#itemsBody tr');
+            rows.forEach((row, index) => {
+                row.querySelector('td:first-child').textContent = index + 1;
+                const removeBtn = row.querySelector('.remove-item');
+                if (removeBtn && index === 0) {
+                    removeBtn.style.display = 'none';
+                }
+            });
+            itemCounter = rows.length;
+            updateTotal();
+        }
+    }
+    
+    // Update total amount
+    function updateTotal() {
+        let total = 0;
+        let itemCount = 0;
+        
+        document.querySelectorAll('#itemsBody tr').forEach(row => {
+            const quantity = parseFloat(row.querySelector('.item-quantity').value) || 0;
+            const unitPrice = parseFloat(row.querySelector('.item-unit-price').value) || 0;
+            total += quantity * unitPrice;
+            if (quantity > 0 && unitPrice > 0) itemCount++;
+        });
+        
+        // Update display
+        document.getElementById('totalAmount').textContent = `${currency} ${total.toFixed(2)}`;
+        document.getElementById('itemCount').textContent = itemCount;
+        
+        // Show/hide total summary
+        const totalSummary = document.getElementById('totalSummary');
+        if (total > 0) {
+            totalSummary.style.display = 'block';
+        } else {
+            totalSummary.style.display = 'none';
+        }
+        
+        // Update items array for form submission
+        updateItemsArray();
+        
+        return total;
+    }
+    
+    // Update items array
+    function updateItemsArray() {
+        items = [];
+        document.querySelectorAll('#itemsBody tr').forEach(row => {
+            const item = {
+                description: row.querySelector('.item-description').value,
+                quantity: row.querySelector('.item-quantity').value,
+                uom: row.querySelector('.item-uom').value,
+                unit_price: row.querySelector('.item-unit-price').value,
+                total_price: (parseFloat(row.querySelector('.item-quantity').value) || 0) * 
+                            (parseFloat(row.querySelector('.item-unit-price').value) || 0),
+                catalog_number: row.querySelector('.item-catalog').value,
+                specifications: row.querySelector('.item-specs').value,
+                notes: ''
+            };
+            items.push(item);
+        });
+        
+        document.getElementById('itemsJson').value = JSON.stringify(items);
+    }
+    
+    // Check budget availability
+    async function checkBudget() {
+        const department = document.getElementById('department').value;
+        const category = document.getElementById('budget_category').value;
+        const amount = updateTotal(); // Get current total
+        
+        if (!department || !category || amount <= 0) {
+            document.getElementById('budgetSection').style.display = 'none';
+            return;
+        }
+        
+        document.getElementById('budgetSection').style.display = 'block';
+        
+        try {
+            const response = await fetch('/api/budget-check', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({
+                    department: department,
+                    category: category,
+                    amount: amount,
+                    fiscal_year: document.getElementById('fiscal_year').value
+                })
+            });
+            
+            const result = await response.json();
+            
+            const budgetResult = document.getElementById('budgetResult');
+            const budgetWarning = document.getElementById('budgetWarning');
+            
+            if (result.available) {
+                budgetResult.innerHTML = `
+                    <div class="budget-info">
+                        <div style="display: flex; align-items: center; gap: 1rem; margin-bottom: 0.5rem;">
+                            <i class="fas fa-check-circle" style="color: var(--success);"></i>
+                            <strong>Sufficient Budget Available</strong>
+                        </div>
+                        <div style="margin-left: 2.5rem;">
+                            <div>Remaining Budget: <strong>${currency} ${result.remaining.toFixed(2)}</strong></div>
+                            <div>Requested Amount: <strong>${currency} ${amount.toFixed(2)}</strong></div>
+                            <div style="margin-top: 0.5rem; color: var(--success);">
+                                <i class="fas fa-check"></i> This purchase is within budget
+                            </div>
+                        </div>
+                    </div>
+                `;
+                budgetWarning.style.display = 'none';
+            } else {
+                budgetResult.innerHTML = `
+                    <div class="budget-info">
+                        <div style="display: flex; align-items: center; gap: 1rem; margin-bottom: 0.5rem;">
+                            <i class="fas fa-exclamation-circle" style="color: var(--danger);"></i>
+                            <strong>Insufficient Budget</strong>
+                        </div>
+                        <div style="margin-left: 2.5rem;">
+                            <div>Remaining Budget: <strong>${currency} ${result.remaining.toFixed(2)}</strong></div>
+                            <div>Requested Amount: <strong>${currency} ${amount.toFixed(2)}</strong></div>
+                            <div>Shortfall: <strong>${currency} ${(amount - result.remaining).toFixed(2)}</strong></div>
+                        </div>
+                    </div>
+                `;
+                budgetWarning.style.display = 'block';
+            }
+        } catch (error) {
+            console.error('Budget check failed:', error);
+        }
+    }
+    
+    // Calculate approval path
+    function calculateApprovalPath() {
+        const amount = updateTotal();
+        let path = '';
+        let steps = [];
+        
+        if (amount <= 10000) {
+            path = 'Approver 1 (Division Head/Director)';
+            steps = [
+                { role: 'approver1', title: 'Division Head', current: true }
+            ];
+        } else if (amount <= 50000) {
+            path = 'Approver 2 → Approver 3 (Group CFO → Group CEO)';
+            steps = [
+                { role: 'approver2', title: 'Group CFO', current: true },
+                { role: 'approver3', title: 'Group CEO', current: false }
+            ];
+        } else {
+            path = 'Approver 4 (Group MD)';
+            steps = [
+                { role: 'approver4', title: 'Group MD', current: true }
+            ];
+        }
+        
+        // Update text
+        document.getElementById('approvalPathText').textContent = path;
+        
+        // Update visualization
+        const container = document.getElementById('approvalVisualization');
+        container.innerHTML = steps.map((step, index) => `
+            <div class="approval-step ${step.current ? 'current' : ''}">
+                <div class="step-title">${step.title}</div>
+                <div class="step-role">${step.role.toUpperCase()}</div>
+            </div>
+        `).join('');
+    }
+    
+    // Form validation
+    function validatePRForm() {
+        const total = updateTotal();
+        if (total <= 0) {
+            alert('Please add at least one item with a positive amount.');
+            return false;
+        }
+        
+        // Validate items
+        let hasInvalidItems = false;
+        document.querySelectorAll('.item-description').forEach(input => {
+            if (!input.value.trim()) {
+                input.style.borderColor = 'var(--danger)';
+                hasInvalidItems = true;
+            } else {
+                input.style.borderColor = '';
+            }
+        });
+        
+        if (hasInvalidItems) {
+            alert('Please provide description for all items.');
+            return false;
+        }
+        
+        return true;
+    }
+</script>
+{% endblock %}

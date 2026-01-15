@@ -1,0 +1,576 @@
+{% extends "base.html" %}
+
+{% block title %}Procurement Dashboard{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <div>
+        <h1 class="page-title">
+            <i class="fas fa-shopping-cart" style="color: var(--primary-600);"></i>
+            Procurement Dashboard
+        </h1>
+        <p class="page-subtitle">
+            Manage approved purchase requisitions and vendor communications
+        </p>
+    </div>
+    <div class="action-buttons">
+        <a href="/vendors" class="btn btn-outline">
+            <i class="fas fa-building"></i> Vendors
+        </a>
+        <a href="/reports" class="btn btn-outline">
+            <i class="fas fa-chart-bar"></i> Reports
+        </a>
+    </div>
+</div>
+
+<!-- Quick Stats -->
+<div class="dashboard-grid" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: 1.5rem; margin-bottom: 2rem;">
+    <div class="stat-card">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem;">
+            <h3 style="font-size: 0.875rem; color: var(--gray-600); text-transform: uppercase; letter-spacing: 1px;">Approved PRs</h3>
+            <div style="background: var(--primary-100); color: var(--primary-600); width: 40px; height: 40px; border-radius: 10px; display: flex; align-items: center; justify-content: center;">
+                <i class="fas fa-check-circle"></i>
+            </div>
+        </div>
+        <div class="stat-number" style="font-size: 2.5rem; font-weight: 700; color: var(--primary-700);">{{ stats.total_approved }}</div>
+        <div style="color: var(--gray-600); font-size: 0.875rem;">Ready for Procurement</div>
+    </div>
+    
+    <div class="stat-card">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem;">
+            <h3 style="font-size: 0.875rem; color: var(--gray-600); text-transform: uppercase; letter-spacing: 1px;">Received</h3>
+            <div style="background: #d1fae5; color: #065f46; width: 40px; height: 40px; border-radius: 10px; display: flex; align-items: center; justify-content: center;">
+                <i class="fas fa-shopping-cart"></i>
+            </div>
+        </div>
+        <div class="stat-number" style="font-size: 2.5rem; font-weight: 700; color: #065f46;">{{ stats.received_count }}</div>
+        <div style="color: var(--gray-600); font-size: 0.875rem;">In Procurement Process</div>
+    </div>
+    
+    <div class="stat-card">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem;">
+            <h3 style="font-size: 0.875rem; color: var(--gray-600); text-transform: uppercase; letter-spacing: 1px;">Pending Receipt</h3>
+            <div style="background: #fef3c7; color: #92400e; width: 40px; height: 40px; border-radius: 10px; display: flex; align-items: center; justify-content: center;">
+                <i class="fas fa-clock"></i>
+            </div>
+        </div>
+        <div class="stat-number" style="font-size: 2.5rem; font-weight: 700; color: #92400e;">{{ stats.pending_receipt }}</div>
+        <div style="color: var(--gray-600); font-size: 0.875rem;">Awaiting Processing</div>
+    </div>
+</div>
+
+<!-- Approved PRs Ready for Procurement -->
+<div class="card mb-4">
+    <div class="card-header">
+        <h3 class="card-title">
+            <i class="fas fa-check-circle" style="color: var(--success);"></i>
+            Approved PRs Ready for Procurement
+            {% if prs|length > 0 %}
+            <span class="badge" style="background: var(--success); color: white; margin-left: 0.5rem;">
+                {{ prs|length }}
+            </span>
+            {% endif %}
+        </h3>
+        <div class="text-muted" style="font-size: 0.875rem;">
+            These PRs have been fully approved and are ready for procurement processing
+        </div>
+    </div>
+    
+    {% if prs and prs|length > 0 %}
+    <div class="table-responsive">
+        <table class="table">
+            <thead>
+                <tr>
+                    <th>PR Number</th>
+                    <th>Requester</th>
+                    <th>Department</th>
+                    <th>Vendor</th>
+                    <th>Amount</th>
+                    <th>Purpose</th>
+                    <th>Approved Date</th>
+                    <th>Priority</th>
+                    <th>Actions</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for pr in prs %}
+                <tr>
+                    <td>
+                        <strong>{{ pr.pr_no }}</strong>
+                        {% if pr.item_count %}
+                        <br>
+                        <small class="text-muted">{{ pr.item_count }} items</small>
+                        {% endif %}
+                    </td>
+                    <td>{{ pr.requester_name_full }}</td>
+                    <td>{{ pr.department }}</td>
+                    <td>
+                        {{ pr.vendor_name[:20] }}{% if pr.vendor_name|length > 20 %}...{% endif %}
+                        {% if pr.vendor_code %}
+                        <br>
+                        <small class="text-muted">{{ pr.vendor_code }}</small>
+                        {% endif %}
+                    </td>
+                    <td>
+                        <strong style="color: var(--danger);">RM {{ "%.2f"|format(pr.total_amount) }}</strong>
+                    </td>
+                    <td>
+                        <div style="max-width: 250px;">
+                            {{ pr.purpose[:50] }}
+                            {% if pr.purpose|length > 50 %}...{% endif %}
+                        </div>
+                    </td>
+                    <td>
+                        {% set approved_date = pr.approver4_date or pr.approver3_date or pr.approver2_date or pr.approver1_date or pr.created_at %}
+                        {{ approved_date[:10] }}
+                        <br>
+                        <small class="text-muted">{{ approved_date[11:16] }}</small>
+                    </td>
+                    <td>
+                        {% if pr.priority == 'URGENT' %}
+                        <span class="status-badge" style="background: var(--danger); color: white;">
+                            URGENT
+                        </span>
+                        {% elif pr.priority == 'HIGH' %}
+                        <span class="status-badge" style="background: #f59e0b; color: white;">
+                            HIGH
+                        </span>
+                        {% else %}
+                        <span class="status-badge" style="background: var(--primary-100); color: var(--primary-700);">
+                            {{ pr.priority }}
+                        </span>
+                        {% endif %}
+                    </td>
+                    <td>
+                        <div class="d-flex gap-2">
+                            <a href="/pr/{{ pr.id }}/procurement-view" class="btn btn-sm btn-primary">
+                                <i class="fas fa-eye"></i> View
+                            </a>
+                            <form method="POST" action="/procurement/receive/{{ pr.id }}" style="display: inline;">
+                                <button type="submit" class="btn btn-sm btn-success"
+                                        onclick="return confirm('Mark PR {{ pr.pr_no }} as received by procurement?')">
+                                    <i class="fas fa-check"></i> Receive
+                                </button>
+                            </form>
+                        </div>
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    
+    <!-- Batch Receive -->
+    <div class="card-footer" style="padding: 1rem; background: var(--gray-50); 
+                                    display: flex; justify-content: space-between; align-items: center;">
+        <div class="text-muted" style="font-size: 0.875rem;">
+            <i class="fas fa-info-circle"></i>
+            Select multiple PRs to receive in batch
+        </div>
+        <div class="action-buttons">
+            <button type="button" class="btn btn-outline" onclick="selectAllPRs()">
+                <i class="fas fa-check-square"></i> Select All
+            </button>
+            <button type="button" class="btn btn-success" onclick="batchReceive()" disabled id="batchReceiveBtn">
+                <i class="fas fa-check-double"></i> Receive Selected
+            </button>
+        </div>
+    </div>
+    
+    {% else %}
+    <div class="empty-state">
+        <div class="empty-state-icon">📦</div>
+        <h3 class="empty-state-title">No Approved PRs</h3>
+        <p class="empty-state-description">
+            There are no approved purchase requisitions awaiting procurement processing at the moment.
+        </p>
+    </div>
+    {% endif %}
+</div>
+
+<!-- PRs Received by Procurement -->
+{% if received_prs and received_prs|length > 0 %}
+<div class="card">
+    <div class="card-header">
+        <h3 class="card-title">
+            <i class="fas fa-clipboard-check" style="color: var(--success);"></i>
+            PRs in Procurement Process
+            <span class="badge" style="background: var(--success); color: white; margin-left: 0.5rem;">
+                {{ received_prs|length }}
+            </span>
+        </h3>
+        <div class="text-muted" style="font-size: 0.875rem;">
+            These PRs have been received and are being processed by procurement
+        </div>
+    </div>
+    
+    <div class="table-responsive">
+        <table class="table">
+            <thead>
+                <tr>
+                    <th>PR Number</th>
+                    <th>Requester</th>
+                    <th>Vendor</th>
+                    <th>Amount</th>
+                    <th>Received Date</th>
+                    <th>Status</th>
+                    <th>Next Action</th>
+                    <th>Actions</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for pr in received_prs %}
+                <tr>
+                    <td>
+                        <strong>{{ pr.pr_no }}</strong>
+                        <br>
+                        <small class="text-muted">{{ pr.item_count }} items</small>
+                    </td>
+                    <td>{{ pr.requester_name_full }}</td>
+                    <td>{{ pr.vendor_name }}</td>
+                    <td>
+                        <strong>RM {{ "%.2f"|format(pr.total_amount) }}</strong>
+                    </td>
+                    <td>
+                        {{ pr.procurement_received_date[:10] }}
+                        <br>
+                        <small class="text-muted">{{ pr.procurement_received_date[11:16] }}</small>
+                    </td>
+                    <td>
+                        {% set days_since = (datetime.now().date() - datetime.strptime(pr.procurement_received_date[:10], '%Y-%m-%d').date()).days %}
+                        {% if days_since <= 2 %}
+                        <span class="status-badge" style="background: var(--success); color: white;">
+                            RECENT
+                        </span>
+                        {% elif days_since <= 7 %}
+                        <span class="status-badge" style="background: var(--warning); color: white;">
+                            IN PROGRESS
+                        </span>
+                        {% else %}
+                        <span class="status-badge" style="background: var(--danger); color: white;">
+                            DELAYED
+                        </span>
+                        {% endif %}
+                    </td>
+                    <td>
+                        {% set next_action = 'Vendor Contact' if days_since <= 2 else 'PO Creation' if days_since <= 7 else 'Follow-up Required' %}
+                        <span class="text-muted">{{ next_action }}</span>
+                    </td>
+                    <td>
+                        <div class="d-flex gap-2">
+                            <button type="button" class="btn btn-sm btn-outline"
+                                    onclick="showProcurementNotes('{{ pr.id }}', '{{ pr.pr_no }}')">
+                                <i class="fas fa-edit"></i> Notes
+                            </button>
+                            <button type="button" class="btn btn-sm btn-success"
+                                    onclick="markAsCompleted('{{ pr.id }}', '{{ pr.pr_no }}')">
+                                <i class="fas fa-check-double"></i> Complete
+                            </button>
+                        </div>
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+{% endif %}
+
+<!-- Procurement Statistics -->
+<div class="card mt-4">
+    <div class="card-header">
+        <h3 class="card-title">
+            <i class="fas fa-chart-line"></i>
+            Procurement Metrics
+        </h3>
+    </div>
+    <div style="padding: 1.5rem;">
+        <div class="form-row">
+            <div class="form-group" style="text-align: center;">
+                <div style="font-size: 2.5rem; font-weight: 700; color: var(--primary-700);">
+                    {{ ((stats.received_count / stats.total_approved * 100) if stats.total_approved > 0 else 0)|round(1) }}%
+                </div>
+                <div style="color: var(--gray-600); font-size: 0.875rem;">Processing Rate</div>
+            </div>
+            
+            <div class="form-group" style="text-align: center;">
+                <div style="font-size: 2.5rem; font-weight: 700; color: var(--success);">
+                    {{ (received_prs|selectattr('priority', 'equalto', 'URGENT')|list|length) }}
+                </div>
+                <div style="color: var(--gray-600); font-size: 0.875rem;">Urgent in Process</div>
+            </div>
+            
+            <div class="form-group" style="text-align: center;">
+                <div style="font-size: 2.5rem; font-weight: 700; color: var(--warning);">
+                    RM {{ "%.0f"|format(received_prs|sum(attribute='total_amount')) }}
+                </div>
+                <div style="color: var(--gray-600); font-size: 0.875rem;">Total in Process</div>
+            </div>
+            
+            <div class="form-group" style="text-align: center;">
+                <div style="font-size: 2.5rem; font-weight: 700; color: var(--info);">
+                    {{ ((received_prs|length) / (prs|length + received_prs|length) * 100 if (prs|length + received_prs|length) > 0 else 0)|round(1) }}%
+                </div>
+                <div style="color: var(--gray-600); font-size: 0.875rem;">Workload</div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Batch Receive Modal -->
+<div class="modal" id="batchReceiveModal">
+    <div class="modal-content">
+        <div class="modal-header">
+            <h3 class="modal-title">
+                <i class="fas fa-check-double" style="color: var(--success);"></i>
+                Batch Receive
+            </h3>
+            <button type="button" class="btn btn-outline btn-sm" onclick="closeModal('batchReceiveModal')">
+                <i class="fas fa-times"></i>
+            </button>
+        </div>
+        <div class="modal-body">
+            <p>You are about to mark <span id="receiveCount">0</span> PRs as received by procurement.</p>
+            <div class="form-group">
+                <label for="receiveNotes" class="form-label">Procurement Notes (optional)</label>
+                <textarea class="form-control" id="receiveNotes" 
+                          placeholder="Any notes about this batch receive..."></textarea>
+            </div>
+            <div id="receiveList" style="max-height: 200px; overflow-y: auto; margin-top: 1rem;">
+                <!-- PRs to receive will appear here -->
+            </div>
+        </div>
+        <div class="modal-footer">
+            <button type="button" class="btn btn-secondary" onclick="closeModal('batchReceiveModal')">
+                Cancel
+            </button>
+            <button type="button" class="btn btn-success" onclick="confirmBatchReceive()">
+                Receive All
+            </button>
+        </div>
+    </div>
+</div>
+
+<!-- Procurement Notes Modal -->
+<div class="modal" id="notesModal">
+    <div class="modal-content">
+        <div class="modal-header">
+            <h3 class="modal-title">
+                <i class="fas fa-edit" style="color: var(--primary-600);"></i>
+                Procurement Notes
+            </h3>
+            <button type="button" class="btn btn-outline btn-sm" onclick="closeModal('notesModal')">
+                <i class="fas fa-times"></i>
+            </button>
+        </div>
+        <div class="modal-body">
+            <div id="notesContent">
+                <!-- Notes form will be loaded here -->
+            </div>
+        </div>
+    </div>
+</div>
+
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    let selectedPRs = new Set();
+    
+    function selectAllPRs() {
+        const checkboxes = document.querySelectorAll('.pr-checkbox');
+        const allSelected = Array.from(checkboxes).every(cb => cb.checked);
+        
+        checkboxes.forEach(cb => {
+            cb.checked = !allSelected;
+            if (cb.checked) {
+                selectedPRs.add(cb.dataset.prId);
+            } else {
+                selectedPRs.delete(cb.dataset.prId);
+            }
+        });
+        
+        updateReceiveButton();
+    }
+    
+    function togglePR(prId, element) {
+        if (element.checked) {
+            selectedPRs.add(prId);
+        } else {
+            selectedPRs.delete(prId);
+        }
+        updateReceiveButton();
+    }
+    
+    function updateReceiveButton() {
+        const btn = document.getElementById('batchReceiveBtn');
+        const count = selectedPRs.size;
+        
+        if (count > 0) {
+            btn.disabled = false;
+            btn.innerHTML = `<i class="fas fa-check-double"></i> Receive ${count}`;
+        } else {
+            btn.disabled = true;
+            btn.innerHTML = `<i class="fas fa-check-double"></i> Receive Selected`;
+        }
+    }
+    
+    function batchReceive() {
+        if (selectedPRs.size === 0) return;
+        
+        document.getElementById('receiveCount').textContent = selectedPRs.size;
+        
+        // Update receive list
+        const list = document.getElementById('receiveList');
+        list.innerHTML = '';
+        selectedPRs.forEach(prId => {
+            // Find PR details from table
+            const row = document.querySelector(`tr[data-pr-id="${prId}"]`);
+            if (row) {
+                const prNo = row.cells[0].querySelector('strong').textContent;
+                const amount = row.cells[4].querySelector('strong').textContent;
+                
+                const div = document.createElement('div');
+                div.style.padding = '0.5rem';
+                div.style.borderBottom = '1px solid var(--gray-200)';
+                div.innerHTML = `<strong>${prNo}</strong> - ${amount}`;
+                list.appendChild(div);
+            }
+        });
+        
+        openModal('batchReceiveModal');
+    }
+    
+    function confirmBatchReceive() {
+        const notes = document.getElementById('receiveNotes').value;
+        
+        // Submit each receive (simplified - in real app, use batch API)
+        selectedPRs.forEach(prId => {
+            const form = document.createElement('form');
+            form.method = 'POST';
+            form.action = `/procurement/receive/${prId}`;
+            form.style.display = 'none';
+            
+            const input = document.createElement('input');
+            input.type = 'hidden';
+            input.name = 'notes';
+            input.value = notes;
+            
+            form.appendChild(input);
+            document.body.appendChild(form);
+            form.submit();
+        });
+        
+        alert(`Receiving ${selectedPRs.size} PRs...`);
+    }
+    
+    function showProcurementNotes(prId, prNo) {
+        fetch(`/api/pr/${prId}/procurement-notes`)
+            .then(response => response.json())
+            .then(data => {
+                const content = document.getElementById('notesContent');
+                content.innerHTML = `
+                    <div class="form-group">
+                        <label class="form-label">PR: ${prNo}</label>
+                        <textarea class="form-control" id="procurementNotes" rows="6">${data.notes || ''}</textarea>
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">Status</label>
+                        <select class="form-control" id="procurementStatus">
+                            <option value="CONTACTED_VENDOR" ${data.status === 'CONTACTED_VENDOR' ? 'selected' : ''}>Contacted Vendor</option>
+                            <option value="PO_CREATED" ${data.status === 'PO_CREATED' ? 'selected' : ''}>PO Created</option>
+                            <option value="ORDER_CONFIRMED" ${data.status === 'ORDER_CONFIRMED' ? 'selected' : ''}>Order Confirmed</option>
+                            <option value="SHIPPED" ${data.status === 'SHIPPED' ? 'selected' : ''}>Shipped</option>
+                            <option value="DELIVERED" ${data.status === 'DELIVERED' ? 'selected' : ''}>Delivered</option>
+                            <option value="COMPLETED" ${data.status === 'COMPLETED' ? 'selected' : ''}>Completed</option>
+                        </select>
+                    </div>
+                    <div class="text-right mt-3">
+                        <button type="button" class="btn btn-secondary" onclick="closeModal('notesModal')">
+                            Cancel
+                        </button>
+                        <button type="button" class="btn btn-primary" onclick="saveProcurementNotes('${prId}')">
+                            Save Notes
+                        </button>
+                    </div>
+                `;
+                openModal('notesModal');
+            })
+            .catch(error => {
+                console.error('Error loading notes:', error);
+                alert('Failed to load procurement notes.');
+            });
+    }
+    
+    function saveProcurementNotes(prId) {
+        const notes = document.getElementById('procurementNotes').value;
+        const status = document.getElementById('procurementStatus').value;
+        
+        fetch(`/api/pr/${prId}/procurement-notes`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+                notes: notes,
+                status: status
+            })
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (data.success) {
+                alert('Notes saved successfully!');
+                closeModal('notesModal');
+                location.reload();
+            }
+        })
+        .catch(error => {
+            console.error('Error saving notes:', error);
+            alert('Failed to save notes.');
+        });
+    }
+    
+    function markAsCompleted(prId, prNo) {
+        if (confirm(`Mark PR ${prNo} as completed?`)) {
+            fetch(`/api/pr/${prId}/complete`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                }
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    alert('PR marked as completed!');
+                    location.reload();
+                }
+            })
+            .catch(error => {
+                console.error('Error completing PR:', error);
+                alert('Failed to mark PR as completed.');
+            });
+        }
+    }
+    
+    // Auto-refresh every 30 seconds
+    setInterval(() => {
+        if (document.hasFocus()) {
+            location.reload();
+        }
+    }, 30000);
+</script>
+
+<style>
+    .pr-checkbox {
+        margin-right: 0.5rem;
+    }
+    
+    tr[data-pr-id] {
+        cursor: pointer;
+    }
+    
+    tr[data-pr-id]:hover {
+        background-color: var(--primary-50) !important;
+    }
+</style>
+{% endblock %}

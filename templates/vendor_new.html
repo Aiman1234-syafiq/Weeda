@@ -1,0 +1,382 @@
+{% extends "base.html" %}
+
+{% block title %}Add New Vendor{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <div>
+        <h1 class="page-title">
+            <i class="fas fa-plus-circle" style="color: var(--primary-600);"></i>
+            Add New Vendor
+        </h1>
+        <p class="page-subtitle">
+            Register a new vendor/supplier for procurement purposes
+        </p>
+    </div>
+    <div class="action-buttons">
+        <a href="/vendors" class="btn btn-secondary">
+            <i class="fas fa-arrow-left"></i> Back to Vendors
+        </a>
+    </div>
+</div>
+
+<form method="POST" action="/vendors/new" id="vendorForm" onsubmit="return validateVendorForm()">
+    <div class="card mb-4">
+        <div class="card-header">
+            <h3 class="card-title">
+                <i class="fas fa-id-card"></i>
+                1. Basic Information
+            </h3>
+        </div>
+        <div style="padding: 1.5rem;">
+            <div class="form-row">
+                <div class="form-group">
+                    <label for="vendor_code" class="form-label">
+                        Vendor Code *
+                        <span class="text-muted" style="font-weight: normal;">(Unique identifier)</span>
+                    </label>
+                    <input type="text" class="form-control" id="vendor_code" 
+                           name="vendor_code" required 
+                           placeholder="e.g., VEN-001">
+                    <div class="form-text">Must be unique. Suggested format: VEN-001, SUP-001, etc.</div>
+                </div>
+                
+                <div class="form-group">
+                    <label for="vendor_name" class="form-label">
+                        Vendor Name *
+                    </label>
+                    <input type="text" class="form-control" id="vendor_name" 
+                           name="vendor_name" required 
+                           placeholder="Company or supplier name">
+                </div>
+                
+                <div class="form-group">
+                    <label for="vendor_type" class="form-label">
+                        Vendor Type *
+                    </label>
+                    <select class="form-control" id="vendor_type" name="vendor_type" required>
+                        <option value="">Select Type</option>
+                        <option value="SUPPLIER">Supplier (Goods)</option>
+                        <option value="CONTRACTOR">Contractor (Services)</option>
+                        <option value="SERVICE_PROVIDER">Service Provider</option>
+                        <option value="CONSULTANT">Consultant</option>
+                        <option value="DISTRIBUTOR">Distributor</option>
+                    </select>
+                </div>
+            </div>
+            
+            <div class="form-row">
+                <div class="form-group">
+                    <label for="tax_id" class="form-label">
+                        Tax ID / Registration Number
+                    </label>
+                    <input type="text" class="form-control" id="tax_id" 
+                           name="tax_id" placeholder="e.g., GST12345678">
+                </div>
+                
+                <div class="form-group">
+                    <label for="registration_date" class="form-label">
+                        Registration Date
+                    </label>
+                    <input type="date" class="form-control" id="registration_date" 
+                           name="registration_date" value="{{ datetime.now().strftime('%Y-%m-%d') }}">
+                </div>
+                
+                <div class="form-group">
+                    <label for="rating" class="form-label">
+                        Initial Rating
+                    </label>
+                    <div style="display: flex; align-items: center; gap: 0.5rem;">
+                        {% for i in range(1, 6) %}
+                        <label style="cursor: pointer;">
+                            <input type="radio" name="rating" value="{{ i }}" 
+                                   {% if i == 5 %}checked{% endif %} style="display: none;">
+                            <i class="far fa-star rating-star" data-value="{{ i }}" 
+                               style="font-size: 1.5rem; color: var(--gray-300);"></i>
+                        </label>
+                        {% endfor %}
+                        <span id="ratingValue" style="margin-left: 1rem; font-weight: 600;">5/5</span>
+                    </div>
+                    <div class="form-text">Set initial vendor rating (1-5 stars)</div>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <div class="card mb-4">
+        <div class="card-header">
+            <h3 class="card-title">
+                <i class="fas fa-address-book"></i>
+                2. Contact Information
+            </h3>
+        </div>
+        <div style="padding: 1.5rem;">
+            <div class="form-row">
+                <div class="form-group">
+                    <label for="contact_person" class="form-label">
+                        Contact Person *
+                    </label>
+                    <input type="text" class="form-control" id="contact_person" 
+                           name="contact_person" required 
+                           placeholder="Name of primary contact">
+                </div>
+                
+                <div class="form-group">
+                    <label for="contact_email" class="form-label">
+                        Contact Email *
+                    </label>
+                    <input type="email" class="form-control" id="contact_email" 
+                           name="contact_email" required 
+                           placeholder="email@company.com">
+                </div>
+                
+                <div class="form-group">
+                    <label for="contact_phone" class="form-label">
+                        Contact Phone *
+                    </label>
+                    <input type="tel" class="form-control" id="contact_phone" 
+                           name="contact_phone" required 
+                           placeholder="+60 12-345 6789">
+                </div>
+            </div>
+            
+            <div class="form-group">
+                <label for="address" class="form-label">
+                    Company Address
+                </label>
+                <textarea class="form-control" id="address" name="address" 
+                          rows="3" placeholder="Full company address"></textarea>
+            </div>
+        </div>
+    </div>
+    
+    <div class="card mb-4">
+        <div class="card-header">
+            <h3 class="card-title">
+                <i class="fas fa-university"></i>
+                3. Banking & Payment Information
+            </h3>
+        </div>
+        <div style="padding: 1.5rem;">
+            <div class="form-row">
+                <div class="form-group">
+                    <label for="bank_name" class="form-label">
+                        Bank Name
+                    </label>
+                    <input type="text" class="form-control" id="bank_name" 
+                           name="bank_name" placeholder="e.g., Maybank, CIMB">
+                </div>
+                
+                <div class="form-group">
+                    <label for="bank_account" class="form-label">
+                        Bank Account Number
+                    </label>
+                    <input type="text" class="form-control" id="bank_account" 
+                           name="bank_account" placeholder="Account number">
+                </div>
+                
+                <div class="form-group">
+                    <label for="payment_terms" class="form-label">
+                        Payment Terms
+                    </label>
+                    <select class="form-control" id="payment_terms" name="payment_terms">
+                        <option value="NET30" selected>NET 30</option>
+                        <option value="NET15">NET 15</option>
+                        <option value="NET45">NET 45</option>
+                        <option value="NET60">NET 60</option>
+                        <option value="UPON_DELIVERY">Upon Delivery</option>
+                        <option value="ADVANCE_50">50% Advance, 50% Upon Delivery</option>
+                        <option value="CASH">Cash</option>
+                    </select>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <div class="card">
+        <div class="card-header">
+            <h3 class="card-title">
+                <i class="fas fa-sticky-note"></i>
+                4. Additional Information
+            </h3>
+        </div>
+        <div style="padding: 1.5rem;">
+            <div class="form-group">
+                <label for="notes" class="form-label">
+                    Notes / Special Instructions
+                </label>
+                <textarea class="form-control" id="notes" name="notes" 
+                          rows="4" placeholder="Any special notes, preferred communication methods, quality standards, etc."></textarea>
+                <div class="form-text">Additional information about this vendor for procurement team.</div>
+            </div>
+            
+            <div class="form-group">
+                <div class="budget-info">
+                    <div style="display: flex; align-items: center; gap: 1rem;">
+                        <i class="fas fa-info-circle" style="color: var(--info); font-size: 1.5rem;"></i>
+                        <div>
+                            <strong>Vendor Registration Guidelines</strong>
+                            <p style="margin: 0.5rem 0 0; font-size: 0.875rem;">
+                                • Ensure all mandatory fields are filled<br>
+                                • Verify vendor details for accuracy<br>
+                                • Set appropriate payment terms based on agreement<br>
+                                • Add relevant notes for procurement team reference
+                            </p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <div class="card-footer" style="padding: 1.5rem; background: var(--gray-50); 
+                                        display: flex; justify-content: space-between; align-items: center;">
+            <div>
+                <strong>Status:</strong>
+                <span class="status-badge" style="background: var(--success); color: white; margin-left: 0.5rem;">
+                    ACTIVE (Default)
+                </span>
+            </div>
+            
+            <div class="action-buttons">
+                <button type="reset" class="btn btn-secondary">
+                    <i class="fas fa-redo"></i> Reset Form
+                </button>
+                <button type="submit" class="btn btn-primary">
+                    <i class="fas fa-save"></i> Save Vendor
+                </button>
+            </div>
+        </div>
+    </div>
+</form>
+
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    // Star rating functionality
+    const stars = document.querySelectorAll('.rating-star');
+    let selectedRating = 5;
+    
+    stars.forEach(star => {
+        star.addEventListener('click', function() {
+            const value = parseInt(this.dataset.value);
+            selectedRating = value;
+            
+            // Update star display
+            stars.forEach(s => {
+                const starValue = parseInt(s.dataset.value);
+                if (starValue <= value) {
+                    s.classList.remove('far');
+                    s.classList.add('fas');
+                    s.style.color = 'var(--warning)';
+                } else {
+                    s.classList.remove('fas');
+                    s.classList.add('far');
+                    s.style.color = 'var(--gray-300)';
+                }
+            });
+            
+            // Update radio button
+            document.querySelector(`input[name="rating"][value="${value}"]`).checked = true;
+            
+            // Update text display
+            document.getElementById('ratingValue').textContent = `${value}/5`;
+        });
+        
+        // Hover effect
+        star.addEventListener('mouseenter', function() {
+            const value = parseInt(this.dataset.value);
+            stars.forEach(s => {
+                const starValue = parseInt(s.dataset.value);
+                if (starValue <= value) {
+                    s.style.color = 'var(--warning)';
+                }
+            });
+        });
+        
+        star.addEventListener('mouseleave', function() {
+            stars.forEach(s => {
+                const starValue = parseInt(s.dataset.value);
+                if (starValue > selectedRating) {
+                    s.style.color = 'var(--gray-300)';
+                }
+            });
+        });
+    });
+    
+    // Form validation
+    function validateVendorForm() {
+        const vendorCode = document.getElementById('vendor_code').value.trim();
+        const vendorName = document.getElementById('vendor_name').value.trim();
+        const contactPerson = document.getElementById('contact_person').value.trim();
+        const contactEmail = document.getElementById('contact_email').value.trim();
+        const contactPhone = document.getElementById('contact_phone').value.trim();
+        
+        // Simple validation
+        if (!vendorCode) {
+            alert('Please enter a vendor code.');
+            return false;
+        }
+        
+        if (!vendorName) {
+            alert('Please enter a vendor name.');
+            return false;
+        }
+        
+        if (!contactPerson) {
+            alert('Please enter a contact person.');
+            return false;
+        }
+        
+        if (!contactEmail || !isValidEmail(contactEmail)) {
+            alert('Please enter a valid email address.');
+            return false;
+        }
+        
+        if (!contactPhone) {
+            alert('Please enter a contact phone number.');
+            return false;
+        }
+        
+        // Check vendor code format (basic validation)
+        if (!/^[A-Za-z0-9\-]+$/.test(vendorCode)) {
+            alert('Vendor code can only contain letters, numbers, and hyphens.');
+            return false;
+        }
+        
+        return true;
+    }
+    
+    function isValidEmail(email) {
+        const re = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+        return re.test(email);
+    }
+    
+    // Generate vendor code suggestion
+    document.getElementById('vendor_name').addEventListener('input', function() {
+        const vendorCode = document.getElementById('vendor_code');
+        if (!vendorCode.value && this.value) {
+            // Generate suggestion from vendor name
+            const prefix = 'VEN';
+            const namePart = this.value.replace(/[^A-Za-z0-9]/g, '').substring(0, 3).toUpperCase();
+            const numberPart = '001'; // In production, get next number from database
+            vendorCode.value = `${prefix}-${namePart}-${numberPart}`;
+        }
+    });
+</script>
+
+<style>
+    .rating-star {
+        transition: all 0.2s ease;
+        cursor: pointer;
+    }
+    
+    .rating-star:hover {
+        transform: scale(1.2);
+    }
+    
+    input[name="rating"]:checked + .rating-star {
+        color: var(--warning) !important;
+    }
+</style>
+{% endblock %}

@@ -1,0 +1,513 @@
+{% extends "base.html" %}
+
+{% block title %}Pending Approvals{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <div>
+        <h1 class="page-title">
+            <i class="fas fa-tasks" style="color: var(--primary-600);"></i>
+            Approval Dashboard
+        </h1>
+        <p class="page-subtitle">
+            Review and process pending purchase requisitions requiring your approval
+        </p>
+    </div>
+    <div class="action-buttons">
+        <span class="badge" style="background: var(--primary-100); color: var(--primary-700); 
+                                   padding: 0.5rem 1rem; border-radius: 20px; font-weight: 600;">
+            {{ prs|length }} Pending PR{{ 's' if prs|length != 1 }}
+        </span>
+    </div>
+</div>
+
+<!-- Budget Exception Requests -->
+{% if budget_exceptions and budget_exceptions|length > 0 and role in ['approver1', 'approver2', 'approver3', 'approver4', 'superadmin'] %}
+<div class="card mb-4">
+    <div class="card-header" style="border-left: 4px solid var(--warning);">
+        <h3 class="card-title">
+            <i class="fas fa-exclamation-triangle" style="color: var(--warning);"></i>
+            Budget Exception Requests
+            <span class="badge" style="background: var(--warning); color: white; margin-left: 0.5rem;">
+                {{ budget_exceptions|length }}
+            </span>
+        </h3>
+        <div class="text-muted" style="font-size: 0.875rem;">
+            These PRs require budget exception approval before normal approval process
+        </div>
+    </div>
+    
+    <div class="table-responsive">
+        <table class="table">
+            <thead>
+                <tr>
+                    <th>PR Number</th>
+                    <th>Requester</th>
+                    <th>Department</th>
+                    <th>Amount</th>
+                    <th>Budget Category</th>
+                    <th>Purpose</th>
+                    <th>Requested</th>
+                    <th>Action</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for pr in budget_exceptions %}
+                <tr>
+                    <td>
+                        <strong>{{ pr.pr_no }}</strong>
+                        <br>
+                        <small class="text-muted">Budget Exception</small>
+                    </td>
+                    <td>{{ pr.requester_name_full }}</td>
+                    <td>{{ pr.department }}</td>
+                    <td>
+                        <strong style="color: var(--danger);">RM {{ "%.2f"|format(pr.total_amount) }}</strong>
+                    </td>
+                    <td>{{ pr.budget_category or 'Not specified' }}</td>
+                    <td>
+                        {{ pr.purpose[:60] }}
+                        {% if pr.purpose|length > 60 %}...{% endif %}
+                    </td>
+                    <td>{{ pr.created_at[:10] }}</td>
+                    <td>
+                        <a href="/pr/{{ pr.id }}/budget-exception" class="btn btn-sm btn-warning">
+                            <i class="fas fa-gavel"></i> Review
+                        </a>
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+{% endif %}
+
+<!-- Regular Approval Requests -->
+<div class="card">
+    <div class="card-header">
+        <h3 class="card-title">
+            <i class="fas fa-inbox"></i>
+            Pending Approvals
+            {% if prs|length > 0 %}
+            <span class="badge" style="background: var(--primary-500); color: white; margin-left: 0.5rem;">
+                {{ prs|length }}
+            </span>
+            {% endif %}
+    </div>
+    
+    {% if prs and prs|length > 0 %}
+    <div class="table-responsive">
+        <table class="table">
+            <thead>
+                <tr>
+                    <th>PR Number</th>
+                    <th>Requester</th>
+                    <th>Department</th>
+                    <th>Vendor</th>
+                    <th>Amount</th>
+                    <th>Purpose</th>
+                    <th>Current Stage</th>
+                    <th>Requested</th>
+                    <th>Priority</th>
+                    <th>Actions</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for pr in prs %}
+                <tr>
+                    <td>
+                        <strong>{{ pr.pr_no }}</strong>
+                        {% if pr.item_count %}
+                        <br>
+                        <small class="text-muted">{{ pr.item_count }} item{{ 's' if pr.item_count != 1 }}</small>
+                        {% endif %}
+                    </td>
+                    <td>
+                        {{ pr.requester_name_full }}
+                        <br>
+                        <small class="text-muted">{{ pr.requester_dept }}</small>
+                    </td>
+                    <td>{{ pr.department }}</td>
+                    <td>{{ pr.vendor_name[:20] }}{% if pr.vendor_name|length > 20 %}...{% endif %}</td>
+                    <td>
+                        <div style="font-weight: 700; color: var(--danger);">
+                            RM {{ "%.2f"|format(pr.total_amount) }}
+                        </div>
+                        <div style="font-size: 0.75rem; color: var(--gray-600);">
+                            {% if pr.total_amount <= 10000 %}
+                            ≤ RM10,000
+                            {% elif pr.total_amount <= 50000 %}
+                            RM11K-49K
+                            {% else %}
+                            ≥ RM50,000
+                            {% endif %}
+                        </div>
+                    </td>
+                    <td>
+                        <div style="max-width: 250px;">
+                            {{ pr.purpose[:50] }}
+                            {% if pr.purpose|length > 50 %}...{% endif %}
+                        </div>
+                    </td>
+                    <td>
+                        {% set approver_map = {
+                            'approver1': 'Division Head',
+                            'approver2': 'Group CFO',
+                            'approver3': 'Group CEO',
+                            'approver4': 'Group MD'
+                        } %}
+                        <div class="status-badge status-pending">
+                            {{ approver_map[pr.current_approver_role] or pr.current_approver_role|upper }}
+                        </div>
+                        {% if pr.budget_status == 'EXCEPTION_APPROVED' %}
+                        <div style="font-size: 0.75rem; color: var(--warning); margin-top: 0.25rem;">
+                            <i class="fas fa-exclamation-triangle"></i> Budget Exception
+                        </div>
+                        {% endif %}
+                    </td>
+                    <td>
+                        {{ pr.created_at[:10] }}
+                        <br>
+                        <small class="text-muted">{{ pr.created_at[11:16] }}</small>
+                    </td>
+                    <td>
+                        {% if pr.priority == 'URGENT' %}
+                        <span class="status-badge" style="background: var(--danger); color: white;">
+                            URGENT
+                        </span>
+                        {% elif pr.priority == 'HIGH' %}
+                        <span class="status-badge" style="background: #f59e0b; color: white;">
+                            HIGH
+                        </span>
+                        {% elif pr.priority == 'LOW' %}
+                        <span class="status-badge" style="background: var(--gray-400); color: white;">
+                            LOW
+                        </span>
+                        {% else %}
+                        <span class="status-badge" style="background: var(--primary-100); color: var(--primary-700);">
+                            NORMAL
+                        </span>
+                        {% endif %}
+                    </td>
+                    <td>
+                        <div class="d-flex gap-2">
+                            <a href="/approve/{{ pr.id }}/review" class="btn btn-sm btn-primary">
+                                <i class="fas fa-eye"></i> Review
+                            </a>
+                            {% if pr.total_amount <= 10000 or (pr.total_amount <= 50000 and role == 'approver3') or (pr.total_amount > 50000 and role == 'approver4') %}
+                            <button type="button" class="btn btn-sm btn-success"
+                                    onclick="quickApprove('{{ pr.id }}', '{{ pr.pr_no }}')"
+                                    title="Quick Approve">
+                                <i class="fas fa-check"></i>
+                            </button>
+                            {% endif %}
+                        </div>
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    
+    <!-- Batch Actions -->
+    <div class="card-footer" style="padding: 1rem; background: var(--gray-50); 
+                                    display: flex; justify-content: space-between; align-items: center;">
+        <div class="text-muted" style="font-size: 0.875rem;">
+            <i class="fas fa-info-circle"></i>
+            Showing {{ prs|length }} pending approval{{ 's' if prs|length != 1 }}
+        </div>
+        <div class="action-buttons">
+            <button type="button" class="btn btn-outline" onclick="selectAllPRs()">
+                <i class="fas fa-check-square"></i> Select All
+            </button>
+            <button type="button" class="btn btn-success" onclick="batchApprove()" disabled id="batchApproveBtn">
+                <i class="fas fa-check-double"></i> Approve Selected
+            </button>
+        </div>
+    </div>
+    
+    {% else %}
+    <div class="empty-state">
+        <div class="empty-state-icon">✅</div>
+        <h3 class="empty-state-title">No Pending Approvals</h3>
+        <p class="empty-state-description">
+            All purchase requisitions have been processed. Check back later for new submissions.
+        </p>
+        <div style="margin-top: 1.5rem;">
+            <a href="/reports" class="btn btn-outline">
+                <i class="fas fa-chart-bar"></i> View Reports
+            </a>
+        </div>
+    </div>
+    {% endif %}
+</div>
+
+<!-- Approval Statistics -->
+<div class="card mt-4">
+    <div class="card-header">
+        <h3 class="card-title">
+            <i class="fas fa-chart-pie"></i>
+            Approval Statistics
+        </h3>
+    </div>
+    <div style="padding: 1.5rem;">
+        <div class="form-row">
+            <div class="form-group" style="text-align: center;">
+                <div style="font-size: 2.5rem; font-weight: 700; color: var(--primary-700);">
+                    {{ prs|length }}
+                </div>
+                <div style="color: var(--gray-600); font-size: 0.875rem;">Pending Now</div>
+            </div>
+            
+            <div class="form-group" style="text-align: center;">
+                <div style="font-size: 2.5rem; font-weight: 700; color: var(--success);">
+                    {{ (prs|selectattr('priority', 'equalto', 'URGENT')|list|length) }}
+                </div>
+                <div style="color: var(--gray-600); font-size: 0.875rem;">Urgent Priority</div>
+            </div>
+            
+            <div class="form-group" style="text-align: center;">
+                <div style="font-size: 2.5rem; font-weight: 700; color: var(--warning);">
+                    RM {{ "%.0f"|format(prs|sum(attribute='total_amount')) }}
+                </div>
+                <div style="color: var(--gray-600); font-size: 0.875rem;">Total Value</div>
+            </div>
+            
+            <div class="form-group" style="text-align: center;">
+                <div style="font-size: 2.5rem; font-weight: 700; color: var(--info);">
+                    {{ ((prs|selectattr('total_amount', 'le', 10000)|list|length) / prs|length * 100)|round(1) if prs|length > 0 else 0 }}%
+                </div>
+                <div style="color: var(--gray-600); font-size: 0.875rem;">≤ RM10K</div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Approval Guidelines -->
+<div class="card mt-4">
+    <div class="card-header">
+        <h3 class="card-title">
+            <i class="fas fa-book"></i>
+            Approval Guidelines for {{ role|upper }}
+        </h3>
+    </div>
+    <div style="padding: 1.5rem;">
+        <div class="form-row">
+            <div class="form-group">
+                <h4 style="margin-bottom: 0.75rem; color: var(--gray-800);">
+                    <i class="fas fa-check-circle" style="color: var(--success); margin-right: 0.5rem;"></i>
+                    Approve if:
+                </h4>
+                <ul style="color: var(--gray-600); padding-left: 1.5rem;">
+                    <li>Purchase is within budget or budget exception is approved</li>
+                    <li>Vendor selection is appropriate and competitive</li>
+                    <li>Items are necessary for business operations</li>
+                    <li>Pricing is reasonable and justified</li>
+                </ul>
+            </div>
+            
+            <div class="form-group">
+                <h4 style="margin-bottom: 0.75rem; color: var(--gray-800);">
+                    <i class="fas fa-times-circle" style="color: var(--danger); margin-right: 0.5rem;"></i>
+                    Reject if:
+                </h4>
+                <ul style="color: var(--gray-600); padding-left: 1.5rem;">
+                    <li>Purchase lacks proper justification</li>
+                    <li>Duplicate or unnecessary purchase</li>
+                    <li>Vendor selection appears non-competitive</li>
+                    <li>Pricing appears inflated or unreasonable</li>
+                </ul>
+            </div>
+        </div>
+        
+        <div class="budget-info" style="margin-top: 1rem;">
+            <div style="display: flex; align-items: center; gap: 1rem;">
+                <i class="fas fa-info-circle" style="color: var(--info); font-size: 1.5rem;"></i>
+                <div>
+                    <strong>Your Approval Authority:</strong>
+                    <p style="margin: 0.5rem 0 0; font-size: 0.875rem;">
+                        {% if role == 'approver1' %}
+                        You can approve purchases up to RM10,000. Amounts above require higher approval.
+                        {% elif role == 'approver2' %}
+                        You review purchases RM11,000-49,999 before they go to Approver 3.
+                        {% elif role == 'approver3' %}
+                        You are the final approver for purchases RM11,000-49,999.
+                        {% elif role == 'approver4' %}
+                        You approve all purchases RM50,000 and above.
+                        {% endif %}
+                    </p>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Batch Approval Modal -->
+<div class="modal" id="batchModal">
+    <div class="modal-content">
+        <div class="modal-header">
+            <h3 class="modal-title">
+                <i class="fas fa-check-double" style="color: var(--success);"></i>
+                Batch Approval
+            </h3>
+            <button type="button" class="btn btn-outline btn-sm" onclick="closeModal('batchModal')">
+                <i class="fas fa-times"></i>
+            </button>
+        </div>
+        <div class="modal-body">
+            <p>You are about to approve <span id="selectedCount">0</span> PRs.</p>
+            <div class="form-group">
+                <label for="batchComments" class="form-label">Comments (applied to all)</label>
+                <textarea class="form-control" id="batchComments" 
+                          placeholder="General comments for batch approval..."></textarea>
+            </div>
+            <div id="selectedList" style="max-height: 200px; overflow-y: auto; margin-top: 1rem;">
+                <!-- Selected PRs will appear here -->
+            </div>
+        </div>
+        <div class="modal-footer">
+            <button type="button" class="btn btn-secondary" onclick="closeModal('batchModal')">
+                Cancel
+            </button>
+            <button type="button" class="btn btn-success" onclick="confirmBatchApprove()">
+                Approve All
+            </button>
+        </div>
+    </div>
+</div>
+
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    let selectedPRs = new Set();
+    
+    function selectAllPRs() {
+        const checkboxes = document.querySelectorAll('.pr-checkbox');
+        const allSelected = Array.from(checkboxes).every(cb => cb.checked);
+        
+        checkboxes.forEach(cb => {
+            cb.checked = !allSelected;
+            if (cb.checked) {
+                selectedPRs.add(cb.dataset.prId);
+            } else {
+                selectedPRs.delete(cb.dataset.prId);
+            }
+        });
+        
+        updateBatchButton();
+    }
+    
+    function togglePR(prId, element) {
+        if (element.checked) {
+            selectedPRs.add(prId);
+        } else {
+            selectedPRs.delete(prId);
+        }
+        updateBatchButton();
+    }
+    
+    function updateBatchButton() {
+        const btn = document.getElementById('batchApproveBtn');
+        const count = selectedPRs.size;
+        
+        if (count > 0) {
+            btn.disabled = false;
+            btn.innerHTML = `<i class="fas fa-check-double"></i> Approve ${count} Selected`;
+        } else {
+            btn.disabled = true;
+            btn.innerHTML = `<i class="fas fa-check-double"></i> Approve Selected`;
+        }
+    }
+    
+    function batchApprove() {
+        if (selectedPRs.size === 0) return;
+        
+        document.getElementById('selectedCount').textContent = selectedPRs.size;
+        
+        // Update selected list
+        const list = document.getElementById('selectedList');
+        list.innerHTML = '';
+        selectedPRs.forEach(prId => {
+            // Find PR details from table (simplified)
+            const row = document.querySelector(`tr[data-pr-id="${prId}"]`);
+            if (row) {
+                const prNo = row.cells[0].querySelector('strong').textContent;
+                const amount = row.cells[4].querySelector('div').textContent;
+                
+                const div = document.createElement('div');
+                div.style.padding = '0.5rem';
+                div.style.borderBottom = '1px solid var(--gray-200)';
+                div.innerHTML = `<strong>${prNo}</strong> - ${amount}`;
+                list.appendChild(div);
+            }
+        });
+        
+        openModal('batchModal');
+    }
+    
+    function confirmBatchApprove() {
+        const comments = document.getElementById('batchComments').value;
+        
+        // Submit each approval (simplified - in real app, use batch API)
+        selectedPRs.forEach(prId => {
+            const form = document.createElement('form');
+            form.method = 'POST';
+            form.action = `/approve/${prId}/approve`;
+            form.style.display = 'none';
+            
+            const input = document.createElement('input');
+            input.type = 'hidden';
+            input.name = 'comments';
+            input.value = comments;
+            
+            form.appendChild(input);
+            document.body.appendChild(form);
+            form.submit();
+        });
+        
+        // Note: This will submit multiple forms. In production, use a batch API endpoint.
+        alert(`Approving ${selectedPRs.size} PRs...`);
+    }
+    
+    function quickApprove(prId, prNo) {
+        if (confirm(`Quick approve PR ${prNo}?`)) {
+            const form = document.createElement('form');
+            form.method = 'POST';
+            form.action = `/approve/${prId}/approve`;
+            form.style.display = 'none';
+            
+            const input = document.createElement('input');
+            input.type = 'hidden';
+            input.name = 'comments';
+            input.value = 'Quick approved';
+            
+            form.appendChild(input);
+            document.body.appendChild(form);
+            form.submit();
+        }
+    }
+    
+    // Auto-refresh every 60 seconds
+    setInterval(() => {
+        if (document.hasFocus()) {
+            location.reload();
+        }
+    }, 60000);
+</script>
+
+<style>
+    .pr-checkbox {
+        margin-right: 0.5rem;
+    }
+    
+    tr[data-pr-id] {
+        cursor: pointer;
+    }
+    
+    tr[data-pr-id]:hover {
+        background-color: var(--primary-50) !important;
+    }
+</style>
+{% endblock %}
