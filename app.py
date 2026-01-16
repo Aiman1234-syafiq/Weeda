@@ -2215,7 +2215,7 @@ def internal_error(error):
 
 @app.route("/procurement/dashboard")
 @login_required
-@role_required("procurement")
+@role_required("procurement", "superadmin")
 def procurement_dashboard():
     with db() as conn:
         kpi = conn.execute("""
