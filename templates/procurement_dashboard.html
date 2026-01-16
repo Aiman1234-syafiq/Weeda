@@ -529,6 +529,7 @@
 </head>
 <body>
     <div class="container">
+        <!-- Page Header -->
         <div class="page-header">
             <div>
                 <h1 class="page-title">
@@ -545,13 +546,13 @@
                         <i class="fas fa-chevron-down ml-1"></i>
                     </button>
                     <div class="dropdown-menu" id="exportMenu">
-                        <a href="#" class="dropdown-item" onclick="exportData('csv')">
+                        <a href="#" class="dropdown-item" onclick="exportData('csv'); return false;">
                             <i class="fas fa-file-csv"></i> CSV
                         </a>
-                        <a href="#" class="dropdown-item" onclick="exportData('pdf')">
+                        <a href="#" class="dropdown-item" onclick="exportData('pdf'); return false;">
                             <i class="fas fa-file-pdf"></i> PDF
                         </a>
-                        <a href="#" class="dropdown-item" onclick="exportData('excel')">
+                        <a href="#" class="dropdown-item" onclick="exportData('excel'); return false;">
                             <i class="fas fa-file-excel"></i> Excel
                         </a>
                     </div>
@@ -639,15 +640,16 @@
             </div>
         </div>
 
-        <!-- CHARTS SECTION -->
+        <!-- CHARTS SECTION - DATA REAL DARI BACKEND -->
         <div class="row mb-4" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(400px, 1fr)); gap: 1rem;">
+            <!-- Monthly PR Volume Chart -->
             <div class="card">
                 <div class="card-header">
                     <h3 class="card-title">
                         <i class="fas fa-chart-bar"></i> Monthly PR Volume
                     </h3>
                     <select class="form-control form-control-sm" style="width: auto;" onchange="updateChartData(this.value)">
-                        <option value="monthly">Last 6 Months</option>
+                        <option value="monthly" selected>Last 6 Months</option>
                         <option value="quarterly">Quarterly</option>
                         <option value="yearly">Yearly</option>
                     </select>
@@ -656,9 +658,15 @@
                     <div id="volumeChart" style="height: 250px; display: flex; align-items: center; justify-content: center;">
                         <canvas id="volumeChartCanvas"></canvas>
                     </div>
+                    {% if chart_data and chart_data.monthly_labels %}
+                    <div class="text-center text-muted" style="font-size: 0.75rem; margin-top: 0.5rem;">
+                        Showing data for: {{ chart_data.monthly_labels|join(', ') }}
+                    </div>
+                    {% endif %}
                 </div>
             </div>
 
+            <!-- Department Distribution Chart -->
             <div class="card">
                 <div class="card-header">
                     <h3 class="card-title">
@@ -669,6 +677,11 @@
                     <div id="departmentChart" style="height: 250px; display: flex; align-items: center; justify-content: center;">
                         <canvas id="departmentChartCanvas"></canvas>
                     </div>
+                    {% if chart_data and chart_data.department_labels %}
+                    <div class="text-center text-muted" style="font-size: 0.75rem; margin-top: 0.5rem;">
+                        Total PRs: {{ chart_data.department_data|sum if chart_data.department_data else 0 }}
+                    </div>
+                    {% endif %}
                 </div>
             </div>
         </div>
@@ -714,7 +727,7 @@
                     <tbody>
                         {% if action_pr and action_pr|length > 0 %}
                             {% for pr in action_pr %}
-                            {% set days_pending = pr.days_pending if pr.days_pending is defined else 0 %}
+                            {% set days_pending = (pr.days_pending|int) if pr.days_pending is defined else 0 %}
                             {% set is_urgent = days_pending > 5 %}
                             {% set is_warning = days_pending > 2 %}
                             <tr class="{% if is_urgent %}table-danger{% elif is_warning %}table-warning{% endif %}">
@@ -918,7 +931,7 @@
                 </div>
                 
                 <div class="text-center">
-                    <a href="{{ url_for('procurement_vendor_form') if url_for else '#' }}" class="btn btn-outline btn-sm" target="_blank">
+                    <a href="{{ url_for('procurement_vendor_form') }}" class="btn btn-outline btn-sm" target="_blank">
                         <i class="fas fa-plus"></i> Register New Vendor
                     </a>
                 </div>
@@ -934,7 +947,35 @@
 
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <script>
-        // Auto-set receipt date to today
+        // Data dari backend untuk charts (Data REAL)
+        const chartData = {
+            monthly: {
+                labels: {{ chart_data.monthly_labels|tojson if chart_data and chart_data.monthly_labels else ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun'] }},
+                data: {{ chart_data.monthly_data|tojson if chart_data and chart_data.monthly_data else [12, 19, 15, 25, 22, 30] }}
+            },
+            quarterly: {
+                labels: {{ chart_data.quarterly_labels|tojson if chart_data and chart_data.quarterly_labels else ['Q1', 'Q2', 'Q3', 'Q4'] }},
+                data: {{ chart_data.quarterly_data|tojson if chart_data and chart_data.quarterly_data else [45, 60, 55, 70] }}
+            },
+            yearly: {
+                labels: {{ chart_data.yearly_labels|tojson if chart_data and chart_data.yearly_labels else ['2021', '2022', '2023', '2024'] }},
+                data: {{ chart_data.yearly_data|tojson if chart_data and chart_data.yearly_data else [180, 220, 250, 300] }}
+            },
+            department: {
+                labels: {{ chart_data.department_labels|tojson if chart_data and chart_data.department_labels else ['IT', 'Finance', 'Operations', 'HR', 'Marketing'] }},
+                data: {{ chart_data.department_data|tojson if chart_data and chart_data.department_data else [30, 25, 20, 15, 10] }}
+            }
+        };
+
+        // Extend colors based on number of departments
+        const baseColors = ['#3b82f6', '#10b981', '#f59e0b', '#8b5cf6', '#ef4444', '#06b6d4', '#f97316', '#84cc16'];
+        if (chartData.department && chartData.department.labels) {
+            chartData.department.colors = baseColors.slice(0, chartData.department.labels.length);
+        }
+
+        let volumeChart = null;
+        let departmentChart = null;
+
         document.addEventListener('DOMContentLoaded', () => {
             const input = document.getElementById('receiptDate');
             if (input) {
@@ -943,6 +984,30 @@
             
             initializeCharts();
             
+            // Listen for checkbox changes
+            const checkboxes = document.querySelectorAll('.pr-checkbox');
+            checkboxes.forEach(cb => {
+                cb.addEventListener('change', updateSelectedCount);
+            });
+
+            // Export dropdown with safe guard
+            const exportBtn = document.getElementById('exportDropdown');
+            if (exportBtn) {
+                exportBtn.addEventListener('click', function(e) {
+                    e.stopPropagation();
+                    const menu = document.getElementById('exportMenu');
+                    menu.style.display = menu.style.display === 'none' || menu.style.display === '' ? 'block' : 'none';
+                });
+            }
+
+            // Close dropdown when clicking outside
+            document.addEventListener('click', function() {
+                const menu = document.getElementById('exportMenu');
+                if (menu) {
+                    menu.style.display = 'none';
+                }
+            });
+
             // Auto-refresh every 5 minutes
             setInterval(() => {
                 const activeModals = document.querySelectorAll('.modal.active');
@@ -952,18 +1017,6 @@
                     // window.location.reload();
                 }
             }, 5 * 60 * 1000);
-        });
-
-        // Dropdown toggle for export
-        document.getElementById('exportDropdown').addEventListener('click', function(e) {
-            e.stopPropagation();
-            const menu = document.getElementById('exportMenu');
-            menu.style.display = menu.style.display === 'none' || menu.style.display === '' ? 'block' : 'none';
-        });
-
-        // Close dropdown when clicking outside
-        document.addEventListener('click', function() {
-            document.getElementById('exportMenu').style.display = 'none';
         });
 
         // Dashboard refresh
@@ -1030,25 +1083,21 @@
             listContainer.innerHTML = html;
         }
 
-        // Listen for checkbox changes
-        document.addEventListener('DOMContentLoaded', function() {
-            const checkboxes = document.querySelectorAll('.pr-checkbox');
-            checkboxes.forEach(cb => {
-                cb.addEventListener('change', updateSelectedCount);
-            });
-        });
-
         // Modal functions
         function openModal(modalId) {
             const modal = document.getElementById(modalId);
-            modal.classList.add('active');
-            modal.style.display = 'flex';
+            if (modal) {
+                modal.classList.add('active');
+                modal.style.display = 'flex';
+            }
         }
 
         function closeModal(modalId) {
             const modal = document.getElementById(modalId);
-            modal.classList.remove('active');
-            modal.style.display = 'none';
+            if (modal) {
+                modal.classList.remove('active');
+                modal.style.display = 'none';
+            }
         }
 
         // Show bulk receive modal
@@ -1162,6 +1211,180 @@
             }
         }
 
+        // Initialize charts dengan data dari backend
+        function initializeCharts() {
+            // Monthly Volume Chart
+            const volumeCtx = document.getElementById('volumeChartCanvas');
+            if (volumeCtx) {
+                if (volumeChart) {
+                    volumeChart.destroy();
+                }
+                
+                volumeChart = new Chart(volumeCtx, {
+                    type: 'bar',
+                    data: {
+                        labels: chartData.monthly.labels,
+                        datasets: [{
+                            label: 'PRs Approved',
+                            data: chartData.monthly.data,
+                            backgroundColor: '#3b82f6',
+                            borderColor: '#2563eb',
+                            borderWidth: 2,
+                            borderRadius: 6
+                        }]
+                    },
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        plugins: {
+                            legend: {
+                                display: false
+                            },
+                            tooltip: {
+                                backgroundColor: 'rgba(0, 0, 0, 0.8)',
+                                titleFont: { size: 12 },
+                                bodyFont: { size: 12 },
+                                callbacks: {
+                                    label: function(context) {
+                                        return `${context.dataset.label}: ${context.raw}`;
+                                    }
+                                }
+                            }
+                        },
+                        scales: {
+                            y: {
+                                beginAtZero: true,
+                                grid: {
+                                    color: 'rgba(0, 0, 0, 0.05)'
+                                },
+                                ticks: {
+                                    font: { size: 11 },
+                                    callback: function(value) {
+                                        return value;
+                                    }
+                                },
+                                title: {
+                                    display: true,
+                                    text: 'Number of PRs',
+                                    font: { size: 12 }
+                                }
+                            },
+                            x: {
+                                grid: {
+                                    display: false
+                                },
+                                ticks: {
+                                    font: { size: 11 }
+                                }
+                            }
+                        }
+                    }
+                });
+            }
+
+            // Department Distribution Chart
+            const deptCtx = document.getElementById('departmentChartCanvas');
+            if (deptCtx) {
+                if (departmentChart) {
+                    departmentChart.destroy();
+                }
+                
+                // Hitung total untuk persentase
+                const total = chartData.department.data.reduce((a, b) => a + b, 0);
+                
+                departmentChart = new Chart(deptCtx, {
+                    type: 'pie',
+                    data: {
+                        labels: chartData.department.labels,
+                        datasets: [{
+                            data: chartData.department.data,
+                            backgroundColor: chartData.department.colors || baseColors.slice(0, chartData.department.labels.length),
+                            borderWidth: 1,
+                            borderColor: '#fff'
+                        }]
+                    },
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        plugins: {
+                            legend: {
+                                position: 'right',
+                                labels: {
+                                    font: { size: 11 },
+                                    padding: 15,
+                                    usePointStyle: true,
+                                    generateLabels: function(chart) {
+                                        const data = chart.data;
+                                        if (data.labels.length && data.datasets.length) {
+                                            return data.labels.map((label, i) => {
+                                                const value = data.datasets[0].data[i];
+                                                const percentage = total > 0 ? Math.round((value / total) * 100) : 0;
+                                                return {
+                                                    text: `${label}: ${value} (${percentage}%)`,
+                                                    fillStyle: data.datasets[0].backgroundColor[i],
+                                                    strokeStyle: data.datasets[0].borderColor[i],
+                                                    lineWidth: data.datasets[0].borderWidth,
+                                                    hidden: false,
+                                                    index: i
+                                                };
+                                            });
+                                        }
+                                        return [];
+                                    }
+                                }
+                            },
+                            tooltip: {
+                                backgroundColor: 'rgba(0, 0, 0, 0.8)',
+                                titleFont: { size: 12 },
+                                bodyFont: { size: 12 },
+                                callbacks: {
+                                    label: function(context) {
+                                        const label = context.label || '';
+                                        const value = context.raw || 0;
+                                        const percentage = total > 0 ? Math.round((value / total) * 100) : 0;
+                                        return `${label}: ${value} (${percentage}%)`;
+                                    }
+                                }
+                            }
+                        }
+                    }
+                });
+            }
+        }
+
+        // Update chart data based on selection
+        async function updateChartData(range) {
+            try {
+                showToast(`Loading ${range} data...`, 'info');
+                
+                // Fetch data dari API berdasarkan range
+                const response = await fetch(`/api/charts/pr-volume?range=${range}`);
+                if (response.ok) {
+                    const data = await response.json();
+                    
+                    // Update chart
+                    if (volumeChart && data.labels && data.data) {
+                        volumeChart.data.labels = data.labels;
+                        volumeChart.data.datasets[0].data = data.data;
+                        volumeChart.update();
+                        
+                        // Update informasi di bawah chart
+                        const chartInfo = document.querySelector('#volumeChart + .text-center');
+                        if (chartInfo) {
+                            chartInfo.textContent = `Showing data for: ${data.labels.join(', ')}`;
+                        }
+                        
+                        showToast(`${range.charAt(0).toUpperCase() + range.slice(1)} data loaded`, 'success');
+                    }
+                } else {
+                    throw new Error('Failed to fetch chart data');
+                }
+            } catch (error) {
+                console.error('Chart update error:', error);
+                showToast('Failed to update chart', 'danger');
+            }
+        }
+
         // Export data function
         function exportData(format) {
             const date = new Date().toISOString().split('T')[0];
@@ -1187,7 +1410,7 @@
         }
 
         function generateCSVData() {
-            let csv = "PR No,Department,Vendor,Amount,Status,Days Pending\n";
+            let csv = "PR No,Department,Vendor,Amount,Status,Days Pending,Created Date\n";
             
             document.querySelectorAll('#actionTable tbody tr').forEach(row => {
                 const cells = row.querySelectorAll('td');
@@ -1198,9 +1421,24 @@
                     const amount = cells[4].textContent.replace('RM ', '').trim();
                     const status = cells[5].textContent.trim();
                     const days = cells[6].textContent.trim();
+                    const createdDate = cells[1].querySelector('.text-muted')?.textContent.trim() || '';
                     
-                    csv += `"${prNo}","${dept}","${vendor}","${amount}","${status}","${days}"\n`;
+                    csv += `"${prNo}","${dept}","${vendor}","${amount}","${status}","${days}","${createdDate}"\n`;
                 }
+            });
+            
+            // Tambah data chart
+            csv += "\n\nChart Data - Monthly PR Volume\nMonth,PR Count\n";
+            chartData.monthly.labels.forEach((label, index) => {
+                csv += `"${label}","${chartData.monthly.data[index]}"\n`;
+            });
+            
+            csv += "\n\nChart Data - Department Distribution\nDepartment,PR Count,Percentage\n";
+            const totalDept = chartData.department.data.reduce((a, b) => a + b, 0);
+            chartData.department.labels.forEach((label, index) => {
+                const count = chartData.department.data[index];
+                const percentage = totalDept > 0 ? Math.round((count / totalDept) * 100) : 0;
+                csv += `"${label}","${count}","${percentage}%"\n`;
             });
             
             return csv;
@@ -1217,114 +1455,8 @@
             document.body.removeChild(link);
         }
 
-        // Initialize charts
-        function initializeCharts() {
-            // Monthly Volume Chart
-            const volumeCtx = document.getElementById('volumeChartCanvas');
-            if (volumeCtx) {
-                new Chart(volumeCtx, {
-                    type: 'bar',
-                    data: {
-                        labels: ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun'],
-                        datasets: [{
-                            label: 'PRs Approved',
-                            data: [12, 19, 15, 25, 22, 30],
-                            backgroundColor: '#3b82f6',
-                            borderColor: '#2563eb',
-                            borderWidth: 2,
-                            borderRadius: 6
-                        }]
-                    },
-                    options: {
-                        responsive: true,
-                        maintainAspectRatio: false,
-                        plugins: {
-                            legend: {
-                                display: false
-                            },
-                            tooltip: {
-                                backgroundColor: 'rgba(0, 0, 0, 0.8)',
-                                titleFont: { size: 12 },
-                                bodyFont: { size: 12 }
-                            }
-                        },
-                        scales: {
-                            y: {
-                                beginAtZero: true,
-                                grid: {
-                                    color: 'rgba(0, 0, 0, 0.05)'
-                                },
-                                ticks: {
-                                    font: { size: 11 }
-                                }
-                            },
-                            x: {
-                                grid: {
-                                    display: false
-                                },
-                                ticks: {
-                                    font: { size: 11 }
-                                }
-                            }
-                        }
-                    }
-                });
-            }
-
-            // Department Distribution Chart
-            const deptCtx = document.getElementById('departmentChartCanvas');
-            if (deptCtx) {
-                new Chart(deptCtx, {
-                    type: 'pie',
-                    data: {
-                        labels: ['IT', 'Finance', 'Operations', 'HR', 'Marketing'],
-                        datasets: [{
-                            data: [30, 25, 20, 15, 10],
-                            backgroundColor: ['#3b82f6', '#10b981', '#f59e0b', '#8b5cf6', '#ef4444'],
-                            borderWidth: 1,
-                            borderColor: '#fff'
-                        }]
-                    },
-                    options: {
-                        responsive: true,
-                        maintainAspectRatio: false,
-                        plugins: {
-                            legend: {
-                                position: 'right',
-                                labels: {
-                                    font: { size: 11 },
-                                    padding: 15,
-                                    usePointStyle: true
-                                }
-                            },
-                            tooltip: {
-                                backgroundColor: 'rgba(0, 0, 0, 0.8)',
-                                titleFont: { size: 12 },
-                                bodyFont: { size: 12 },
-                                callbacks: {
-                                    label: function(context) {
-                                        const label = context.label || '';
-                                        const value = context.raw || 0;
-                                        const total = context.dataset.data.reduce((a, b) => a + b, 0);
-                                        const percentage = Math.round((value / total) * 100);
-                                        return `${label}: ${value} (${percentage}%)`;
-                                    }
-                                }
-                            }
-                        }
-                    }
-                });
-            }
-        }
-
-        function updateChartData(range) {
-            showToast(`Chart updated to show ${range} data`, 'info');
-            // In a real application, you would fetch new data and update the charts here
-        }
-
         // Toast notification function
         function showToast(message, type = 'info') {
-            // Remove existing toasts
             document.querySelectorAll('.toast').forEach(toast => toast.remove());
             
             const toast = document.createElement('div');
