@@ -177,7 +177,7 @@
             </thead>
             <tbody>
                 {% for pr in action_pr %}
-                {% set days_pending = (datetime.now() - datetime.fromisoformat(pr.created_at.replace('Z', '+00:00'))).days if pr.created_at else 0 %}
+                {% set days_pending = pr.days_pending %}
                 {% set is_urgent = days_pending > 5 %}
                 {% set is_warning = days_pending > 2 %}
                 <tr class="{% if is_urgent %}table-danger{% elif is_warning %}table-warning{% endif %}">
@@ -334,7 +334,7 @@
             
             <div class="form-group">
                 <label class="form-label">Receipt Date</label>
-                <input type="date" class="form-control" id="receiptDate" value="{{ now().strftime('%Y-%m-%d') }}">
+                <input type="date" class="form-control" id="receiptDate">
             </div>
             
             <div class="form-group">
@@ -396,6 +396,14 @@
 
 {% block extra_js %}
 <script>
+    // Auto-set receipt date to today
+    document.addEventListener('DOMContentLoaded', () => {
+        const input = document.getElementById('receiptDate');
+        if (input) {
+            input.value = new Date().toISOString().split('T')[0];
+        }
+    });
+
     // Dropdown toggle for export
     document.getElementById('exportDropdown').addEventListener('click', function(e) {
         e.stopPropagation();
