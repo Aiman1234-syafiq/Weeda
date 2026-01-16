@@ -10,12 +10,16 @@
             Procurement Dashboard
         </h1>
         <p class="page-subtitle">
-            Manage approved purchase requisitions and vendor communications
+            Manage approved purchase requisitions, vendors, and procurement workflows
         </p>
     </div>
     <div class="action-buttons">
+        <!-- Vendor Registration Button -->
+        <a href="{{ url_for('procurement_vendor_form') }}" class="btn btn-primary">
+            <i class="fas fa-user-plus me-1"></i>Register New Vendor
+        </a>
         <a href="/vendors" class="btn btn-outline">
-            <i class="fas fa-building"></i> Vendors
+            <i class="fas fa-building"></i> Vendor Database
         </a>
         <a href="/reports" class="btn btn-outline">
             <i class="fas fa-chart-bar"></i> Reports
@@ -57,30 +61,112 @@
         <div class="stat-number" style="font-size: 2.5rem; font-weight: 700; color: #92400e;">{{ stats.pending_receipt }}</div>
         <div style="color: var(--gray-600); font-size: 0.875rem;">Awaiting Processing</div>
     </div>
+    
+    <div class="stat-card">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem;">
+            <h3 style="font-size: 0.875rem; color: var(--gray-600); text-transform: uppercase; letter-spacing: 1px;">Active Vendors</h3>
+            <div style="background: #e0e7ff; color: #3730a3; width: 40px; height: 40px; border-radius: 10px; display: flex; align-items: center; justify-content: center;">
+                <i class="fas fa-building"></i>
+            </div>
+        </div>
+        <div class="stat-number" style="font-size: 2.5rem; font-weight: 700; color: #3730a3;">
+            {% with vendors = get_vendors_count() %}
+                {{ vendors.active_count }}
+            {% endwith %}
+        </div>
+        <div style="color: var(--gray-600); font-size: 0.875rem;">Registered Vendors</div>
+    </div>
+</div>
+
+<!-- Quick Actions -->
+<div class="card mb-4">
+    <div class="card-header">
+        <h3 class="card-title">
+            <i class="fas fa-bolt" style="color: var(--warning);"></i>
+            Quick Actions
+        </h3>
+    </div>
+    <div class="card-body" style="padding: 1.5rem;">
+        <div class="quick-actions-grid" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 1rem;">
+            <a href="{{ url_for('procurement_vendor_form') }}" class="quick-action-card" 
+               style="background: linear-gradient(135deg, var(--primary-500), var(--primary-600)); color: white;">
+                <div class="quick-action-icon">
+                    <i class="fas fa-user-plus"></i>
+                </div>
+                <div class="quick-action-text">
+                    <h4>Register Vendor</h4>
+                    <p>Add new vendor to database</p>
+                </div>
+            </a>
+            
+            <a href="/vendors" class="quick-action-card" 
+               style="background: linear-gradient(135deg, #059669, #047857); color: white;">
+                <div class="quick-action-icon">
+                    <i class="fas fa-address-book"></i>
+                </div>
+                <div class="quick-action-text">
+                    <h4>Vendor Database</h4>
+                    <p>View & manage all vendors</p>
+                </div>
+            </a>
+            
+            <a href="/pr/new" class="quick-action-card" 
+               style="background: linear-gradient(135deg, #7c3aed, #6d28d9); color: white;">
+                <div class="quick-action-icon">
+                    <i class="fas fa-file-invoice"></i>
+                </div>
+                <div class="quick-action-text">
+                    <h4>Create PR</h4>
+                    <p>New purchase requisition</p>
+                </div>
+            </a>
+            
+            <a href="#" class="quick-action-card" 
+               style="background: linear-gradient(135deg, #0ea5e9, #0284c7); color: white;">
+                <div class="quick-action-icon">
+                    <i class="fas fa-search"></i>
+                </div>
+                <div class="quick-action-text">
+                    <h4>Find Vendor</h4>
+                    <p>Search vendor database</p>
+                </div>
+            </a>
+        </div>
+    </div>
 </div>
 
 <!-- Approved PRs Ready for Procurement -->
 <div class="card mb-4">
-    <div class="card-header">
-        <h3 class="card-title">
-            <i class="fas fa-check-circle" style="color: var(--success);"></i>
-            Approved PRs Ready for Procurement
-            {% if prs|length > 0 %}
-            <span class="badge" style="background: var(--success); color: white; margin-left: 0.5rem;">
-                {{ prs|length }}
-            </span>
-            {% endif %}
-        </h3>
-        <div class="text-muted" style="font-size: 0.875rem;">
-            These PRs have been fully approved and are ready for procurement processing
+    <div class="card-header" style="display: flex; justify-content: space-between; align-items: center;">
+        <div>
+            <h3 class="card-title">
+                <i class="fas fa-check-circle" style="color: var(--success);"></i>
+                Approved PRs Ready for Procurement
+                {% if prs|length > 0 %}
+                <span class="badge" style="background: var(--success); color: white; margin-left: 0.5rem;">
+                    {{ prs|length }}
+                </span>
+                {% endif %}
+            </h3>
+            <div class="text-muted" style="font-size: 0.875rem;">
+                These PRs have been fully approved and are ready for procurement processing
+            </div>
+        </div>
+        <div>
+            <a href="#" class="btn btn-sm btn-outline" onclick="toggleSelectMode()">
+                <i class="fas fa-check-square"></i> Select Multiple
+            </a>
         </div>
     </div>
     
     {% if prs and prs|length > 0 %}
     <div class="table-responsive">
-        <table class="table">
+        <table class="table" id="prTable">
             <thead>
                 <tr>
+                    <th width="30">
+                        <input type="checkbox" id="selectAll" class="pr-checkbox" onclick="toggleAllPRs()">
+                    </th>
                     <th>PR Number</th>
                     <th>Requester</th>
                     <th>Department</th>
@@ -94,7 +180,11 @@
             </thead>
             <tbody>
                 {% for pr in prs %}
-                <tr>
+                <tr data-pr-id="{{ pr.id }}">
+                    <td>
+                        <input type="checkbox" class="pr-checkbox" data-pr-id="{{ pr.id }}" 
+                               onchange="togglePR('{{ pr.id }}', this)">
+                    </td>
                     <td>
                         <strong>{{ pr.pr_no }}</strong>
                         {% if pr.item_count %}
@@ -105,11 +195,21 @@
                     <td>{{ pr.requester_name_full }}</td>
                     <td>{{ pr.department }}</td>
                     <td>
-                        {{ pr.vendor_name[:20] }}{% if pr.vendor_name|length > 20 %}...{% endif %}
-                        {% if pr.vendor_code %}
-                        <br>
-                        <small class="text-muted">{{ pr.vendor_code }}</small>
-                        {% endif %}
+                        <div style="display: flex; align-items: center; gap: 0.5rem;">
+                            <div>
+                                <strong>{{ pr.vendor_name[:20] }}{% if pr.vendor_name|length > 20 %}...{% endif %}</strong>
+                                {% if pr.vendor_code %}
+                                <br>
+                                <small class="text-muted">{{ pr.vendor_code }}</small>
+                                {% endif %}
+                            </div>
+                            {% if pr.vendor_code %}
+                            <a href="/vendors/view/{{ pr.vendor_code }}" class="btn btn-xs btn-outline" 
+                               title="View Vendor Details" style="padding: 2px 6px;">
+                                <i class="fas fa-external-link-alt" style="font-size: 10px;"></i>
+                            </a>
+                            {% endif %}
+                        </div>
                     </td>
                     <td>
                         <strong style="color: var(--danger);">RM {{ "%.2f"|format(pr.total_amount) }}</strong>
@@ -129,11 +229,11 @@
                     <td>
                         {% if pr.priority == 'URGENT' %}
                         <span class="status-badge" style="background: var(--danger); color: white;">
-                            URGENT
+                            <i class="fas fa-exclamation-circle me-1"></i>URGENT
                         </span>
                         {% elif pr.priority == 'HIGH' %}
                         <span class="status-badge" style="background: #f59e0b; color: white;">
-                            HIGH
+                            <i class="fas fa-arrow-up me-1"></i>HIGH
                         </span>
                         {% else %}
                         <span class="status-badge" style="background: var(--primary-100); color: var(--primary-700);">
@@ -162,16 +262,17 @@
     
     <!-- Batch Receive -->
     <div class="card-footer" style="padding: 1rem; background: var(--gray-50); 
-                                    display: flex; justify-content: space-between; align-items: center;">
+                                    display: flex; justify-content: space-between; align-items: center;"
+                                    id="batchActions" style="display: none;">
         <div class="text-muted" style="font-size: 0.875rem;">
             <i class="fas fa-info-circle"></i>
-            Select multiple PRs to receive in batch
+            <span id="selectedCount">0</span> PRs selected for batch processing
         </div>
         <div class="action-buttons">
-            <button type="button" class="btn btn-outline" onclick="selectAllPRs()">
-                <i class="fas fa-check-square"></i> Select All
+            <button type="button" class="btn btn-outline btn-sm" onclick="deselectAllPRs()">
+                <i class="fas fa-times"></i> Clear All
             </button>
-            <button type="button" class="btn btn-success" onclick="batchReceive()" disabled id="batchReceiveBtn">
+            <button type="button" class="btn btn-success btn-sm" onclick="batchReceive()" id="batchReceiveBtn">
                 <i class="fas fa-check-double"></i> Receive Selected
             </button>
         </div>
@@ -184,6 +285,11 @@
         <p class="empty-state-description">
             There are no approved purchase requisitions awaiting procurement processing at the moment.
         </p>
+        <div class="empty-state-actions">
+            <a href="/pr/new" class="btn btn-primary">
+                <i class="fas fa-plus"></i> Create New PR
+            </a>
+        </div>
     </div>
     {% endif %}
 </div>
@@ -227,7 +333,17 @@
                         <small class="text-muted">{{ pr.item_count }} items</small>
                     </td>
                     <td>{{ pr.requester_name_full }}</td>
-                    <td>{{ pr.vendor_name }}</td>
+                    <td>
+                        <div style="display: flex; align-items: center; gap: 0.5rem;">
+                            <div>{{ pr.vendor_name }}</div>
+                            {% if pr.vendor_code %}
+                            <a href="/vendors/view/{{ pr.vendor_code }}" class="btn btn-xs btn-outline" 
+                               title="View Vendor Details" style="padding: 2px 6px;">
+                                <i class="fas fa-external-link-alt" style="font-size: 10px;"></i>
+                            </a>
+                            {% endif %}
+                        </div>
+                    </td>
                     <td>
                         <strong>RM {{ "%.2f"|format(pr.total_amount) }}</strong>
                     </td>
@@ -240,21 +356,23 @@
                         {% set days_since = (datetime.now().date() - datetime.strptime(pr.procurement_received_date[:10], '%Y-%m-%d').date()).days %}
                         {% if days_since <= 2 %}
                         <span class="status-badge" style="background: var(--success); color: white;">
-                            RECENT
+                            <i class="fas fa-bolt me-1"></i>RECENT
                         </span>
                         {% elif days_since <= 7 %}
                         <span class="status-badge" style="background: var(--warning); color: white;">
-                            IN PROGRESS
+                            <i class="fas fa-spinner me-1"></i>IN PROGRESS
                         </span>
                         {% else %}
                         <span class="status-badge" style="background: var(--danger); color: white;">
-                            DELAYED
+                            <i class="fas fa-exclamation-triangle me-1"></i>DELAYED
                         </span>
                         {% endif %}
                     </td>
                     <td>
                         {% set next_action = 'Vendor Contact' if days_since <= 2 else 'PO Creation' if days_since <= 7 else 'Follow-up Required' %}
-                        <span class="text-muted">{{ next_action }}</span>
+                        <span class="text-muted">
+                            <i class="fas fa-arrow-right me-1"></i>{{ next_action }}
+                        </span>
                     </td>
                     <td>
                         <div class="d-flex gap-2">
@@ -276,44 +394,48 @@
 </div>
 {% endif %}
 
-<!-- Procurement Statistics -->
+<!-- Recent Vendor Activity -->
 <div class="card mt-4">
     <div class="card-header">
         <h3 class="card-title">
-            <i class="fas fa-chart-line"></i>
-            Procurement Metrics
+            <i class="fas fa-building" style="color: var(--primary-600);"></i>
+            Recent Vendor Activity
         </h3>
     </div>
-    <div style="padding: 1.5rem;">
-        <div class="form-row">
-            <div class="form-group" style="text-align: center;">
-                <div style="font-size: 2.5rem; font-weight: 700; color: var(--primary-700);">
-                    {{ ((stats.received_count / stats.total_approved * 100) if stats.total_approved > 0 else 0)|round(1) }}%
+    <div class="card-body">
+        <div class="vendor-activity-list">
+            {% for vendor in get_recent_vendors(5) %}
+            <div class="vendor-activity-item" style="padding: 1rem; border-bottom: 1px solid var(--gray-200);">
+                <div style="display: flex; justify-content: space-between; align-items: center;">
+                    <div style="display: flex; align-items: center; gap: 1rem;">
+                        <div style="width: 40px; height: 40px; background: var(--primary-100); 
+                                    border-radius: 8px; display: flex; align-items: center; justify-content: center;">
+                            <i class="fas fa-building" style="color: var(--primary-600);"></i>
+                        </div>
+                        <div>
+                            <strong>{{ vendor.vendor_name }}</strong>
+                            <div style="color: var(--gray-600); font-size: 0.875rem;">
+                                {{ vendor.vendor_code }} • {{ vendor.vendor_type or 'Supplier' }}
+                            </div>
+                        </div>
+                    </div>
+                    <div>
+                        <a href="/vendors/view/{{ vendor.vendor_code }}" class="btn btn-sm btn-outline">
+                            <i class="fas fa-eye"></i> View
+                        </a>
+                        <a href="/vendors/edit/{{ vendor.vendor_code }}" class="btn btn-sm btn-primary">
+                            <i class="fas fa-edit"></i> Edit
+                        </a>
+                    </div>
                 </div>
-                <div style="color: var(--gray-600); font-size: 0.875rem;">Processing Rate</div>
             </div>
-            
-            <div class="form-group" style="text-align: center;">
-                <div style="font-size: 2.5rem; font-weight: 700; color: var(--success);">
-                    {{ (received_prs|selectattr('priority', 'equalto', 'URGENT')|list|length) }}
-                </div>
-                <div style="color: var(--gray-600); font-size: 0.875rem;">Urgent in Process</div>
-            </div>
-            
-            <div class="form-group" style="text-align: center;">
-                <div style="font-size: 2.5rem; font-weight: 700; color: var(--warning);">
-                    RM {{ "%.0f"|format(received_prs|sum(attribute='total_amount')) }}
-                </div>
-                <div style="color: var(--gray-600); font-size: 0.875rem;">Total in Process</div>
-            </div>
-            
-            <div class="form-group" style="text-align: center;">
-                <div style="font-size: 2.5rem; font-weight: 700; color: var(--info);">
-                    {{ ((received_prs|length) / (prs|length + received_prs|length) * 100 if (prs|length + received_prs|length) > 0 else 0)|round(1) }}%
-                </div>
-                <div style="color: var(--gray-600); font-size: 0.875rem;">Workload</div>
-            </div>
+            {% endfor %}
         </div>
+    </div>
+    <div class="card-footer">
+        <a href="/vendors" class="btn btn-outline btn-sm">
+            <i class="fas fa-list"></i> View All Vendors
+        </a>
     </div>
 </div>
 
@@ -323,7 +445,7 @@
         <div class="modal-header">
             <h3 class="modal-title">
                 <i class="fas fa-check-double" style="color: var(--success);"></i>
-                Batch Receive
+                Batch Receive PRs
             </h3>
             <button type="button" class="btn btn-outline btn-sm" onclick="closeModal('batchReceiveModal')">
                 <i class="fas fa-times"></i>
@@ -331,21 +453,25 @@
         </div>
         <div class="modal-body">
             <p>You are about to mark <span id="receiveCount">0</span> PRs as received by procurement.</p>
+            
             <div class="form-group">
                 <label for="receiveNotes" class="form-label">Procurement Notes (optional)</label>
                 <textarea class="form-control" id="receiveNotes" 
-                          placeholder="Any notes about this batch receive..."></textarea>
+                          placeholder="Add any notes about this batch receive..."
+                          rows="3"></textarea>
             </div>
-            <div id="receiveList" style="max-height: 200px; overflow-y: auto; margin-top: 1rem;">
+            
+            <div id="receiveList" style="max-height: 200px; overflow-y: auto; margin-top: 1rem; 
+                                        border: 1px solid var(--gray-200); border-radius: 8px; padding: 0.5rem;">
                 <!-- PRs to receive will appear here -->
             </div>
         </div>
         <div class="modal-footer">
             <button type="button" class="btn btn-secondary" onclick="closeModal('batchReceiveModal')">
-                Cancel
+                <i class="fas fa-times"></i> Cancel
             </button>
             <button type="button" class="btn btn-success" onclick="confirmBatchReceive()">
-                Receive All
+                <i class="fas fa-check-double"></i> Receive All
             </button>
         </div>
     </div>
@@ -376,20 +502,38 @@
 {% block extra_js %}
 <script>
     let selectedPRs = new Set();
+    let isSelectMode = false;
     
-    function selectAllPRs() {
-        const checkboxes = document.querySelectorAll('.pr-checkbox');
-        const allSelected = Array.from(checkboxes).every(cb => cb.checked);
+    // Toggle select mode
+    function toggleSelectMode() {
+        isSelectMode = !isSelectMode;
+        const batchActions = document.getElementById('batchActions');
+        
+        if (isSelectMode) {
+            batchActions.style.display = 'flex';
+            document.querySelectorAll('.pr-checkbox').forEach(cb => {
+                cb.style.display = 'block';
+            });
+        } else {
+            batchActions.style.display = 'none';
+            deselectAllPRs();
+        }
+    }
+    
+    function toggleAllPRs() {
+        const selectAll = document.getElementById('selectAll');
+        const checkboxes = document.querySelectorAll('.pr-checkbox:not(#selectAll)');
         
         checkboxes.forEach(cb => {
-            cb.checked = !allSelected;
-            if (cb.checked) {
+            cb.checked = selectAll.checked;
+            if (selectAll.checked) {
                 selectedPRs.add(cb.dataset.prId);
             } else {
                 selectedPRs.delete(cb.dataset.prId);
             }
         });
         
+        updateSelectedCount();
         updateReceiveButton();
     }
     
@@ -399,7 +543,28 @@
         } else {
             selectedPRs.delete(prId);
         }
+        
+        // Update "Select All" checkbox state
+        const checkboxes = document.querySelectorAll('.pr-checkbox:not(#selectAll)');
+        const allChecked = Array.from(checkboxes).every(cb => cb.checked);
+        document.getElementById('selectAll').checked = allChecked;
+        
+        updateSelectedCount();
         updateReceiveButton();
+    }
+    
+    function deselectAllPRs() {
+        selectedPRs.clear();
+        document.querySelectorAll('.pr-checkbox').forEach(cb => {
+            cb.checked = false;
+        });
+        updateSelectedCount();
+        updateReceiveButton();
+    }
+    
+    function updateSelectedCount() {
+        const countElement = document.getElementById('selectedCount');
+        countElement.textContent = selectedPRs.size;
     }
     
     function updateReceiveButton() {
@@ -423,17 +588,30 @@
         // Update receive list
         const list = document.getElementById('receiveList');
         list.innerHTML = '';
+        
         selectedPRs.forEach(prId => {
             // Find PR details from table
             const row = document.querySelector(`tr[data-pr-id="${prId}"]`);
             if (row) {
-                const prNo = row.cells[0].querySelector('strong').textContent;
-                const amount = row.cells[4].querySelector('strong').textContent;
+                const prNo = row.cells[1].querySelector('strong').textContent;
+                const vendor = row.cells[4].querySelector('strong').textContent;
+                const amount = row.cells[5].querySelector('strong').textContent;
                 
                 const div = document.createElement('div');
-                div.style.padding = '0.5rem';
+                div.style.padding = '0.75rem';
                 div.style.borderBottom = '1px solid var(--gray-200)';
-                div.innerHTML = `<strong>${prNo}</strong> - ${amount}`;
+                div.style.display = 'flex';
+                div.style.justifyContent = 'space-between';
+                div.style.alignItems = 'center';
+                div.innerHTML = `
+                    <div>
+                        <strong style="display: block;">${prNo}</strong>
+                        <small class="text-muted">${vendor} • ${amount}</small>
+                    </div>
+                    <div style="color: var(--success);">
+                        <i class="fas fa-check-circle"></i>
+                    </div>
+                `;
                 list.appendChild(div);
             }
         });
@@ -444,24 +622,50 @@
     function confirmBatchReceive() {
         const notes = document.getElementById('receiveNotes').value;
         
-        // Submit each receive (simplified - in real app, use batch API)
+        // Show loading state
+        const receiveBtn = document.querySelector('#batchReceiveModal .btn-success');
+        const originalText = receiveBtn.innerHTML;
+        receiveBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Receiving...';
+        receiveBtn.disabled = true;
+        
+        // Submit each receive
+        let completed = 0;
+        const total = selectedPRs.size;
+        
         selectedPRs.forEach(prId => {
-            const form = document.createElement('form');
-            form.method = 'POST';
-            form.action = `/procurement/receive/${prId}`;
-            form.style.display = 'none';
+            const formData = new FormData();
+            formData.append('notes', notes);
             
-            const input = document.createElement('input');
-            input.type = 'hidden';
-            input.name = 'notes';
-            input.value = notes;
-            
-            form.appendChild(input);
-            document.body.appendChild(form);
-            form.submit();
+            fetch(`/procurement/receive/${prId}`, {
+                method: 'POST',
+                body: formData
+            })
+            .then(response => {
+                completed++;
+                if (completed === total) {
+                    // All completed
+                    alert(`Successfully received ${total} PR(s)!`);
+                    closeModal('batchReceiveModal');
+                    location.reload();
+                }
+            })
+            .catch(error => {
+                console.error('Error receiving PR:', error);
+                completed++;
+                if (completed === total) {
+                    alert(`Processed ${total} PR(s) with some errors. Page will reload.`);
+                    location.reload();
+                }
+            });
         });
         
-        alert(`Receiving ${selectedPRs.size} PRs...`);
+        // Fallback in case of errors
+        setTimeout(() => {
+            if (completed < total) {
+                alert(`Processed ${completed}/${total} PR(s). Page will reload.`);
+                location.reload();
+            }
+        }, 5000);
     }
     
     function showProcurementNotes(prId, prNo) {
@@ -472,25 +676,38 @@
                 content.innerHTML = `
                     <div class="form-group">
                         <label class="form-label">PR: ${prNo}</label>
-                        <textarea class="form-control" id="procurementNotes" rows="6">${data.notes || ''}</textarea>
+                        <textarea class="form-control" id="procurementNotes" rows="6" 
+                                  placeholder="Add procurement notes...">${data.notes || ''}</textarea>
                     </div>
                     <div class="form-group">
                         <label class="form-label">Status</label>
                         <select class="form-control" id="procurementStatus">
-                            <option value="CONTACTED_VENDOR" ${data.status === 'CONTACTED_VENDOR' ? 'selected' : ''}>Contacted Vendor</option>
-                            <option value="PO_CREATED" ${data.status === 'PO_CREATED' ? 'selected' : ''}>PO Created</option>
-                            <option value="ORDER_CONFIRMED" ${data.status === 'ORDER_CONFIRMED' ? 'selected' : ''}>Order Confirmed</option>
-                            <option value="SHIPPED" ${data.status === 'SHIPPED' ? 'selected' : ''}>Shipped</option>
-                            <option value="DELIVERED" ${data.status === 'DELIVERED' ? 'selected' : ''}>Delivered</option>
-                            <option value="COMPLETED" ${data.status === 'COMPLETED' ? 'selected' : ''}>Completed</option>
+                            <option value="CONTACTED_VENDOR" ${data.status === 'CONTACTED_VENDOR' ? 'selected' : ''}>
+                                <i class="fas fa-phone me-1"></i> Contacted Vendor
+                            </option>
+                            <option value="PO_CREATED" ${data.status === 'PO_CREATED' ? 'selected' : ''}>
+                                <i class="fas fa-file-invoice me-1"></i> PO Created
+                            </option>
+                            <option value="ORDER_CONFIRMED" ${data.status === 'ORDER_CONFIRMED' ? 'selected' : ''}>
+                                <i class="fas fa-check-circle me-1"></i> Order Confirmed
+                            </option>
+                            <option value="SHIPPED" ${data.status === 'SHIPPED' ? 'selected' : ''}>
+                                <i class="fas fa-shipping-fast me-1"></i> Shipped
+                            </option>
+                            <option value="DELIVERED" ${data.status === 'DELIVERED' ? 'selected' : ''}>
+                                <i class="fas fa-box me-1"></i> Delivered
+                            </option>
+                            <option value="COMPLETED" ${data.status === 'COMPLETED' ? 'selected' : ''}>
+                                <i class="fas fa-flag-checkered me-1"></i> Completed
+                            </option>
                         </select>
                     </div>
                     <div class="text-right mt-3">
                         <button type="button" class="btn btn-secondary" onclick="closeModal('notesModal')">
-                            Cancel
+                            <i class="fas fa-times"></i> Cancel
                         </button>
                         <button type="button" class="btn btn-primary" onclick="saveProcurementNotes('${prId}')">
-                            Save Notes
+                            <i class="fas fa-save"></i> Save Notes
                         </button>
                     </div>
                 `;
@@ -522,6 +739,8 @@
                 alert('Notes saved successfully!');
                 closeModal('notesModal');
                 location.reload();
+            } else {
+                alert('Error saving notes: ' + (data.error || 'Unknown error'));
             }
         })
         .catch(error => {
@@ -531,7 +750,7 @@
     }
     
     function markAsCompleted(prId, prNo) {
-        if (confirm(`Mark PR ${prNo} as completed?`)) {
+        if (confirm(`Mark PR ${prNo} as completed? This will move it to completed status.`)) {
             fetch(`/api/pr/${prId}/complete`, {
                 method: 'POST',
                 headers: {
@@ -543,12 +762,30 @@
                 if (data.success) {
                     alert('PR marked as completed!');
                     location.reload();
+                } else {
+                    alert('Error: ' + (data.error || 'Failed to mark PR as completed'));
                 }
             })
             .catch(error => {
                 console.error('Error completing PR:', error);
                 alert('Failed to mark PR as completed.');
             });
+        }
+    }
+    
+    // Modal functions
+    function openModal(modalId) {
+        document.getElementById(modalId).style.display = 'flex';
+    }
+    
+    function closeModal(modalId) {
+        document.getElementById(modalId).style.display = 'none';
+    }
+    
+    // Close modal when clicking outside
+    window.onclick = function(event) {
+        if (event.target.classList.contains('modal')) {
+            event.target.style.display = 'none';
         }
     }
     
@@ -562,15 +799,141 @@
 
 <style>
     .pr-checkbox {
-        margin-right: 0.5rem;
-    }
-    
-    tr[data-pr-id] {
+        display: none;
         cursor: pointer;
     }
     
-    tr[data-pr-id]:hover {
-        background-color: var(--primary-50) !important;
+    .stat-card {
+        background: white;
+        padding: 1.5rem;
+        border-radius: 12px;
+        box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+        transition: transform 0.2s, box-shadow 0.2s;
+    }
+    
+    .stat-card:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+    }
+    
+    .stat-number {
+        transition: color 0.2s;
+    }
+    
+    .quick-action-card {
+        padding: 1.5rem;
+        border-radius: 12px;
+        text-decoration: none;
+        transition: transform 0.2s, box-shadow 0.2s;
+        display: flex;
+        align-items: center;
+        gap: 1rem;
+    }
+    
+    .quick-action-card:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 8px 16px rgba(0,0,0,0.2);
+        text-decoration: none;
+        color: white;
+    }
+    
+    .quick-action-icon {
+        font-size: 2rem;
+        opacity: 0.9;
+    }
+    
+    .quick-action-text h4 {
+        margin: 0;
+        font-size: 1rem;
+    }
+    
+    .quick-action-text p {
+        margin: 0.25rem 0 0 0;
+        font-size: 0.875rem;
+        opacity: 0.9;
+    }
+    
+    .status-badge {
+        display: inline-flex;
+        align-items: center;
+        padding: 4px 8px;
+        border-radius: 20px;
+        font-size: 0.75rem;
+        font-weight: 600;
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+    }
+    
+    .modal {
+        display: none;
+        position: fixed;
+        z-index: 1000;
+        left: 0;
+        top: 0;
+        width: 100%;
+        height: 100%;
+        background-color: rgba(0,0,0,0.5);
+        align-items: center;
+        justify-content: center;
+    }
+    
+    .modal-content {
+        background: white;
+        border-radius: 12px;
+        width: 90%;
+        max-width: 500px;
+        max-height: 90vh;
+        overflow-y: auto;
+        box-shadow: 0 20px 25px -5px rgba(0,0,0,0.1);
+    }
+    
+    .modal-header {
+        padding: 1.5rem;
+        border-bottom: 1px solid var(--gray-200);
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+    }
+    
+    .modal-body {
+        padding: 1.5rem;
+    }
+    
+    .modal-footer {
+        padding: 1rem 1.5rem;
+        border-top: 1px solid var(--gray-200);
+        display: flex;
+        justify-content: flex-end;
+        gap: 0.5rem;
+    }
+    
+    .empty-state {
+        text-align: center;
+        padding: 3rem 1rem;
+    }
+    
+    .empty-state-icon {
+        font-size: 3rem;
+        margin-bottom: 1rem;
+        opacity: 0.5;
+    }
+    
+    .empty-state-title {
+        font-size: 1.5rem;
+        margin-bottom: 0.5rem;
+        color: var(--gray-700);
+    }
+    
+    .empty-state-description {
+        color: var(--gray-600);
+        margin-bottom: 1.5rem;
+        max-width: 400px;
+        margin-left: auto;
+        margin-right: auto;
+    }
+    
+    .empty-state-actions {
+        margin-top: 1.5rem;
     }
 </style>
 {% endblock %}

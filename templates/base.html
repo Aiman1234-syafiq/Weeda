@@ -129,6 +129,7 @@
 
         .nav-item {
             margin-bottom: 0.5rem;
+            position: relative;
         }
 
         .nav-link {
@@ -141,6 +142,7 @@
             border-radius: 10px;
             transition: var(--transition);
             font-weight: 500;
+            position: relative;
         }
 
         .nav-link:hover {
@@ -159,6 +161,22 @@
             width: 20px;
             text-align: center;
             font-size: 1.1rem;
+        }
+
+        .nav-badge {
+            position: absolute;
+            right: 1rem;
+            background: var(--danger);
+            color: white;
+            font-size: 0.75rem;
+            font-weight: 600;
+            min-width: 20px;
+            height: 20px;
+            border-radius: 10px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 0 0.5rem;
         }
 
         /* Main Content */
@@ -728,6 +746,61 @@
             gap: 1rem;
         }
 
+        /* Quick Actions */
+        .quick-actions-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 1rem;
+            margin-bottom: 2rem;
+        }
+
+        .quick-action-card {
+            background: linear-gradient(135deg, var(--primary-500), var(--primary-600));
+            color: white;
+            padding: 1.5rem;
+            border-radius: var(--border-radius);
+            text-decoration: none;
+            transition: var(--transition);
+            display: flex;
+            align-items: center;
+            gap: 1rem;
+        }
+
+        .quick-action-card:hover {
+            transform: translateY(-3px);
+            box-shadow: 0 10px 20px rgba(0, 0, 0, 0.2);
+            text-decoration: none;
+            color: white;
+        }
+
+        .quick-action-card.success {
+            background: linear-gradient(135deg, var(--success), #0da271);
+        }
+
+        .quick-action-card.warning {
+            background: linear-gradient(135deg, var(--warning), #d97706);
+        }
+
+        .quick-action-card.info {
+            background: linear-gradient(135deg, var(--info), #1e40af);
+        }
+
+        .quick-action-icon {
+            font-size: 2rem;
+            opacity: 0.9;
+        }
+
+        .quick-action-text h4 {
+            margin: 0;
+            font-size: 1rem;
+        }
+
+        .quick-action-text p {
+            margin: 0.25rem 0 0 0;
+            font-size: 0.875rem;
+            opacity: 0.9;
+        }
+
         /* Utility Classes */
         .d-flex {
             display: flex;
@@ -890,7 +963,7 @@
                             <i class="fas fa-check-circle"></i>
                             <span>Approvals</span>
                             {% if stats and stats.pending_approvals %}
-                            <span class="notification-badge">{{ stats.pending_approvals }}</span>
+                            <span class="nav-badge">{{ stats.pending_approvals }}</span>
                             {% endif %}
                         </a>
                     </li>
@@ -906,16 +979,23 @@
                     <li class="nav-item">
                         <a href="/procurement" class="nav-link {% if request.path == '/procurement' %}active{% endif %}">
                             <i class="fas fa-shopping-cart"></i>
-                            <span>Procurement</span>
+                            <span>Procurement Dashboard</span>
                             {% if stats and stats.pending_receipt %}
-                            <span class="notification-badge">{{ stats.pending_receipt }}</span>
+                            <span class="nav-badge">{{ stats.pending_receipt }}</span>
                             {% endif %}
                         </a>
                     </li>
                     <li class="nav-item">
-                        <a href="/vendors" class="nav-link {% if request.path.startswith('/vendors') %}active{% endif %}">
+                        <a href="/vendors" class="nav-link {% if request.path.startswith('/vendors') and not request.path.startswith('/vendors/new') %}active{% endif %}">
                             <i class="fas fa-building"></i>
-                            <span>Vendors</span>
+                            <span>Vendor Database</span>
+                        </a>
+                    </li>
+                    <li class="nav-item">
+                        <a href="{{ url_for('procurement_vendor_form') }}" class="nav-link {% if request.path.startswith('/procurement/vendor/new') or request.path.startswith('/vendors/new') %}active{% endif %}">
+                            <i class="fas fa-user-plus"></i>
+                            <span>Register New Vendor</span>
+                            <span class="nav-badge" style="background: var(--success);">NEW</span>
                         </a>
                     </li>
                     {% endif %}
@@ -941,6 +1021,15 @@
                 <div class="nav-title">System</div>
                 <ul class="nav-links">
                     <li class="nav-item">
+                        <a href="/notifications" class="nav-link">
+                            <i class="fas fa-bell"></i>
+                            <span>Notifications</span>
+                            {% if notifications and notifications|selectattr('is_read', 'equalto', 0)|list|length > 0 %}
+                            <span class="nav-badge">{{ notifications|selectattr('is_read', 'equalto', 0)|list|length }}</span>
+                            {% endif %}
+                        </a>
+                    </li>
+                    <li class="nav-item">
                         <a href="/logout" class="nav-link">
                             <i class="fas fa-sign-out-alt"></i>
                             <span>Logout</span>
@@ -950,6 +1039,14 @@
             </div>
             
             <div class="sidebar-footer">
+                <div class="system-info">
+                    <small class="text-muted" style="display: block; margin-bottom: 0.5rem;">
+                        <i class="fas fa-user-circle"></i> {{ session.name }}
+                    </small>
+                    <small class="text-muted" style="display: block;">
+                        <i class="fas fa-briefcase"></i> {{ session.role|title }}
+                    </small>
+                </div>
                 <div class="version-info">
                     <small class="text-muted">v2.0 • Enterprise Edition</small>
                 </div>
@@ -961,6 +1058,9 @@
             <!-- Top Header -->
             <header class="top-header">
                 <div class="header-actions">
+                    <button class="mobile-menu-toggle btn btn-outline" onclick="toggleSidebar()" style="display: none;">
+                        <i class="fas fa-bars"></i>
+                    </button>
                     <div class="search-box">
                         <i class="fas fa-search"></i>
                         <input type="text" placeholder="Search PRs, vendors..." id="global-search">
@@ -988,6 +1088,9 @@
                             <div class="alert alert-{{ category if category in ['success', 'danger', 'warning', 'info'] else 'info' }}">
                                 <i class="fas fa-{{ 'check-circle' if category == 'success' else 'exclamation-circle' if category == 'danger' else 'info-circle' if category == 'info' else 'exclamation-triangle' }}"></i>
                                 {{ message }}
+                                <button type="button" class="btn btn-sm btn-outline" onclick="this.parentElement.remove()" style="margin-left: auto;">
+                                    <i class="fas fa-times"></i>
+                                </button>
                             </div>
                         {% endfor %}
                     {% endif %}
@@ -1018,13 +1121,24 @@
                 </div>
                 
                 <div class="form-group">
-                    <label class="form-label">Last Login</label>
-                    <div class="text-muted">Recently active</div>
+                    <label class="form-label">Email</label>
+                    <div class="text-muted">{{ session.email|default('Not provided') }}</div>
                 </div>
                 
                 <div class="form-group">
                     <label class="form-label">Department</label>
                     <div>{{ session.department|default('Not assigned') }}</div>
+                </div>
+                
+                <div class="form-group">
+                    <label class="form-label">Last Login</label>
+                    <div class="text-muted">
+                        {% if session.last_login %}
+                            {{ session.last_login|format_datetime }}
+                        {% else %}
+                            Recently active
+                        {% endif %}
+                    </div>
                 </div>
             </div>
             <div class="modal-footer">
@@ -1050,11 +1164,13 @@
         // Open modal
         function openModal(modalId) {
             document.getElementById(modalId).classList.add('active');
+            document.body.style.overflow = 'hidden';
         }
         
         // Close modal
         function closeModal(modalId) {
             document.getElementById(modalId).classList.remove('active');
+            document.body.style.overflow = 'auto';
         }
         
         // User profile menu
@@ -1062,13 +1178,21 @@
             openModal('profile-modal');
         });
         
-        // Close modals when clicking outside
+        // Close modals when clicking outside or pressing ESC
         document.querySelectorAll('.modal').forEach(modal => {
             modal.addEventListener('click', function(e) {
                 if (e.target === this) {
-                    this.classList.remove('active');
+                    closeModal(this.id);
                 }
             });
+        });
+        
+        document.addEventListener('keydown', function(e) {
+            if (e.key === 'Escape') {
+                document.querySelectorAll('.modal.active').forEach(modal => {
+                    closeModal(modal.id);
+                });
+            }
         });
         
         // Auto-hide alerts after 5 seconds
@@ -1083,14 +1207,21 @@
         document.getElementById('global-search').addEventListener('keyup', async function(e) {
             if (e.key === 'Enter' && this.value.trim()) {
                 const query = this.value.trim();
-                const response = await fetch(`/search?q=${encodeURIComponent(query)}`);
-                const results = await response.json();
-                
-                // Show search results (simplified)
-                if (results.prs && results.prs.length > 0) {
-                    alert(`Found ${results.prs.length} PRs matching "${query}"`);
-                } else {
-                    alert('No results found');
+                try {
+                    const response = await fetch(`/api/search?q=${encodeURIComponent(query)}`);
+                    const results = await response.json();
+                    
+                    // Show search results (simplified)
+                    if (results.prs && results.prs.length > 0) {
+                        alert(`Found ${results.prs.length} PRs matching "${query}"`);
+                    } else if (results.vendors && results.vendors.length > 0) {
+                        alert(`Found ${results.vendors.length} vendors matching "${query}"`);
+                    } else {
+                        alert('No results found');
+                    }
+                } catch (error) {
+                    console.error('Search error:', error);
+                    alert('Search temporarily unavailable');
                 }
             }
         });
@@ -1107,8 +1238,22 @@
                 if (!field.value.trim()) {
                     field.style.borderColor = 'var(--danger)';
                     isValid = false;
+                    
+                    // Add error message
+                    let errorMsg = field.parentElement.querySelector('.error-message');
+                    if (!errorMsg) {
+                        errorMsg = document.createElement('div');
+                        errorMsg.className = 'error-message';
+                        errorMsg.style.color = 'var(--danger)';
+                        errorMsg.style.fontSize = '0.875rem';
+                        errorMsg.style.marginTop = '0.25rem';
+                        field.parentElement.appendChild(errorMsg);
+                    }
+                    errorMsg.textContent = 'This field is required';
                 } else {
                     field.style.borderColor = '';
+                    const errorMsg = field.parentElement.querySelector('.error-message');
+                    if (errorMsg) errorMsg.remove();
                 }
             });
             
@@ -1127,12 +1272,33 @@
         // Format date
         function formatDate(dateString) {
             if (!dateString) return 'N/A';
-            const date = new Date(dateString);
-            return date.toLocaleDateString('en-MY', {
-                year: 'numeric',
-                month: 'short',
-                day: 'numeric'
-            });
+            try {
+                const date = new Date(dateString);
+                return date.toLocaleDateString('en-MY', {
+                    year: 'numeric',
+                    month: 'short',
+                    day: 'numeric'
+                });
+            } catch {
+                return dateString;
+            }
+        }
+        
+        // Format date time
+        function formatDateTime(dateString) {
+            if (!dateString) return 'N/A';
+            try {
+                const date = new Date(dateString);
+                return date.toLocaleString('en-MY', {
+                    year: 'numeric',
+                    month: 'short',
+                    day: 'numeric',
+                    hour: '2-digit',
+                    minute: '2-digit'
+                });
+            } catch {
+                return dateString;
+            }
         }
         
         // Initialize page title based on current page
@@ -1142,8 +1308,9 @@
                 '/dashboard': 'Dashboard',
                 '/pr/new': 'Create PR',
                 '/approve': 'Approvals',
-                '/procurement': 'Procurement',
-                '/vendors': 'Vendors',
+                '/procurement': 'Procurement Dashboard',
+                '/procurement/vendor/new': 'Register New Vendor',
+                '/vendors': 'Vendor Database',
                 '/reports': 'Reports',
                 '/admin/users': 'User Management'
             };
@@ -1153,6 +1320,132 @@
                     setPageTitle(title);
                     break;
                 }
+            }
+            
+            // Show mobile menu toggle on small screens
+            if (window.innerWidth <= 1024) {
+                document.querySelector('.mobile-menu-toggle').style.display = 'flex';
+            }
+            
+            // Add window resize listener
+            window.addEventListener('resize', function() {
+                if (window.innerWidth <= 1024) {
+                    document.querySelector('.mobile-menu-toggle').style.display = 'flex';
+                } else {
+                    document.querySelector('.mobile-menu-toggle').style.display = 'none';
+                    document.querySelector('.sidebar').classList.remove('active');
+                }
+            });
+        });
+        
+        // AJAX helper function
+        async function ajaxRequest(url, options = {}) {
+            try {
+                const response = await fetch(url, {
+                    headers: {
+                        'Content-Type': 'application/json',
+                        ...options.headers
+                    },
+                    ...options
+                });
+                
+                if (!response.ok) {
+                    throw new Error(`HTTP ${response.status}`);
+                }
+                
+                return await response.json();
+            } catch (error) {
+                console.error('AJAX request failed:', error);
+                throw error;
+            }
+        }
+        
+        // Confirmation dialog helper
+        function confirmAction(message, callback) {
+            if (confirm(message)) {
+                callback();
+            }
+        }
+        
+        // Toast notification
+        function showToast(message, type = 'info') {
+            const toast = document.createElement('div');
+            toast.className = `alert alert-${type}`;
+            toast.style.position = 'fixed';
+            toast.style.top = '20px';
+            toast.style.right = '20px';
+            toast.style.zIndex = '10000';
+            toast.style.maxWidth = '300px';
+            toast.innerHTML = `
+                <i class="fas fa-${type === 'success' ? 'check-circle' : type === 'danger' ? 'exclamation-circle' : 'info-circle'}"></i>
+                ${message}
+                <button type="button" class="btn btn-sm btn-outline" onclick="this.parentElement.remove()" style="margin-left: auto;">
+                    <i class="fas fa-times"></i>
+                </button>
+            `;
+            
+            document.body.appendChild(toast);
+            
+            // Auto remove after 5 seconds
+            setTimeout(() => {
+                if (toast.parentElement) {
+                    toast.remove();
+                }
+            }, 5000);
+        }
+        
+        // Export data as CSV
+        function exportToCSV(data, filename) {
+            const csvContent = "data:text/csv;charset=utf-8," + data;
+            const encodedUri = encodeURI(csvContent);
+            const link = document.createElement("a");
+            link.setAttribute("href", encodedUri);
+            link.setAttribute("download", filename);
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+        }
+        
+        // Table row selection
+        function enableTableSelection(tableId) {
+            const table = document.getElementById(tableId);
+            if (!table) return;
+            
+            const checkboxes = table.querySelectorAll('input[type="checkbox"]');
+            const selectAll = table.querySelector('th input[type="checkbox"]');
+            
+            if (selectAll) {
+                selectAll.addEventListener('change', function() {
+                    checkboxes.forEach(cb => {
+                        cb.checked = this.checked;
+                        cb.dispatchEvent(new Event('change'));
+                    });
+                });
+            }
+        }
+        
+        // Filter table rows
+        function filterTable(tableId, searchTerm, columnIndex = 1) {
+            const table = document.getElementById(tableId);
+            if (!table) return;
+            
+            const rows = table.querySelectorAll('tbody tr');
+            searchTerm = searchTerm.toLowerCase();
+            
+            rows.forEach(row => {
+                const cells = row.querySelectorAll('td');
+                const cellText = cells[columnIndex] ? cells[columnIndex].textContent.toLowerCase() : '';
+                row.style.display = cellText.includes(searchTerm) ? '' : 'none';
+            });
+        }
+        
+        // Initialize any table with search
+        document.querySelectorAll('.table').forEach(table => {
+            const searchInput = table.parentElement.querySelector('.table-search');
+            if (searchInput) {
+                searchInput.addEventListener('input', function() {
+                    filterTable(table.id, this.value);
+                });
             }
         });
     </script>

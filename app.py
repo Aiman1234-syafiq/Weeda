@@ -20,7 +20,6 @@ from werkzeug.security import generate_password_hash, check_password_hash
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 DB_PATH = os.environ.get("DB_PATH", os.path.join(BASE_DIR, "pr_enterprise.db"))
 
-
 app = Flask(__name__)
 app.secret_key = os.environ.get(
     "SECRET_KEY",
@@ -29,7 +28,6 @@ app.secret_key = os.environ.get(
 
 # SESSION CONFIG (DEV SAFE)
 app.config['SESSION_COOKIE_SECURE'] = os.environ.get("SESSION_COOKIE_SECURE", "false").lower() == "true"
-
 app.config['SESSION_COOKIE_HTTPONLY'] = True
 app.config['PERMANENT_SESSION_LIFETIME'] = 1800
 
@@ -134,8 +132,39 @@ def close_db_connections():
         del thread_local.connection
 
 # ==================================================
-# DATABASE INITIALIZATION
+# DATABASE INITIALIZATION & MIGRATION
 # ==================================================
+def migrate_vendor_columns():
+    """
+    Add additional columns to vendors table if they don't exist
+    """
+    try:
+        with db() as conn:
+            # Check if columns exist
+            columns_needed = [
+                ('bank_address', 'TEXT'),
+                ('bank_code', 'TEXT'),
+                ('swift_code', 'TEXT'),
+                ('fax_no', 'TEXT'),
+                ('incoterms', 'TEXT'),
+                ('order_currency', 'TEXT DEFAULT "MYR"'),
+                ('year_established', 'TEXT'),
+                ('created_status', 'TEXT DEFAULT "New Vendor"')
+            ]
+            
+            for column_name, column_type in columns_needed:
+                try:
+                    conn.execute(f"ALTER TABLE vendors ADD COLUMN {column_name} {column_type}")
+                    print(f"✅ Added column: {column_name}")
+                except sqlite3.OperationalError:
+                    # Column already exists
+                    pass
+            
+            print("✅ Vendor table migration completed")
+            
+    except Exception as e:
+        print(f"⚠️ Migration error: {e}")
+
 def init_db():
     """
     Initialize database dengan WAL mode dan connection yang aman
@@ -314,7 +343,7 @@ def init_db():
         )
         """)
         
-        # VENDORS
+        # VENDORS - UPDATED dengan kolom tambahan
         conn.execute("""
         CREATE TABLE IF NOT EXISTS vendors (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -329,7 +358,15 @@ def init_db():
             contact_phone TEXT,
             bank_name TEXT,
             bank_account TEXT,
+            bank_address TEXT,
+            bank_code TEXT,
+            swift_code TEXT,
             payment_terms TEXT DEFAULT 'NET30',
+            fax_no TEXT,
+            incoterms TEXT,
+            order_currency TEXT DEFAULT 'MYR',
+            year_established TEXT,
+            created_status TEXT DEFAULT 'New Vendor',
             rating INTEGER DEFAULT 5,
             is_active INTEGER DEFAULT 1,
             notes TEXT
@@ -355,6 +392,9 @@ def init_db():
         
         conn.close()
         print("✅ Database initialized successfully with WAL mode")
+        
+        # Run migration untuk kolom tambahan
+        migrate_vendor_columns()
         
     except Exception as e:
         print(f"❌ Error initializing database: {e}")
@@ -430,7 +470,6 @@ def check_budget_availability(department, category, amount, fiscal_year):
 def get_approval_path(amount, budget_status):
     if budget_status == BUDGET_STATUS['OUT_OF_BUDGET']:
         return ['approver1']
-
     
     if amount <= APPROVAL_THRESHOLDS['LEVEL_1']:
         return ['approver1']
@@ -699,6 +738,18 @@ def pr_new():
                 budget_status = BUDGET_STATUS['OUT_OF_BUDGET']
             
             with db() as conn:
+                # Validate vendor code if provided
+                vendor_code = request.form.get("vendor_code")
+                if vendor_code:
+                    vendor = conn.execute("""
+                    SELECT vendor_name FROM vendors 
+                    WHERE vendor_code=? AND is_active=1
+                    """, (vendor_code,)).fetchone()
+                    
+                    if not vendor:
+                        flash("Invalid or inactive vendor code", "danger")
+                        return redirect("/pr/new")
+                
                 # Insert PR header
                 cursor = conn.execute("""
                 INSERT INTO pr (
@@ -718,7 +769,7 @@ def pr_new():
                     request.form.get("requester_name", session["name"]), department,
                     budget_category, budget_status,
                     request.form["purpose"], request.form.get("priority", "NORMAL"),
-                    request.form["vendor_name"], request.form.get("vendor_code"),
+                    request.form["vendor_name"], vendor_code,
                     request.form.get("vendor_contact"),
                     total_amount, request.form.get("currency", "MYR"),
                     float(request.form.get("tax_amount", 0)),
@@ -1421,7 +1472,7 @@ def mark_all_notifications_read():
         return redirect("/dashboard")
 
 # ==================================================
-# VENDOR MANAGEMENT
+# VENDOR MANAGEMENT - FULL IMPLEMENTATION
 # ==================================================
 @app.route("/vendors")
 @login_required
@@ -1445,43 +1496,353 @@ def vendor_list():
 @login_required
 @role_required("superadmin", "procurement")
 def new_vendor():
+    """Legacy vendor form - redirect to new procurement form"""
+    return redirect(url_for("procurement_vendor_form"))
+
+@app.route("/vendors/edit/<string:vendor_code>", methods=["GET", "POST"])
+@login_required
+@role_required("superadmin", "procurement")
+def edit_vendor(vendor_code):
+    """Edit existing vendor details"""
+    try:
+        with db() as conn:
+            vendor = conn.execute("""
+            SELECT * FROM vendors WHERE vendor_code=?
+            """, (vendor_code,)).fetchone()
+            
+            if not vendor:
+                flash("Vendor not found", "danger")
+                return redirect("/vendors")
+            
+            if request.method == "POST":
+                # Parse existing notes
+                notes_data = {}
+                if vendor['notes']:
+                    try:
+                        notes_data = json.loads(vendor['notes'])
+                    except:
+                        pass
+                
+                # Update notes with form data
+                notes_data.update({
+                    "company_registration_no": request.form.get("company_registration_no"),
+                    "sst_reg_no": request.form.get("sst_reg_no"),
+                    "tin_no": request.form.get("tin_no"),
+                    "msic_no": request.form.get("msic_no"),
+                    "goods_services": request.form.get("goods_services_details")
+                })
+                
+                # Format address
+                full_address = ", ".join(filter(None, [
+                    request.form.get("address"),
+                    request.form.get("state"),
+                    request.form.get("country"),
+                    request.form.get("postal_code")
+                ]))
+                
+                # Update vendor
+                conn.execute("""
+                UPDATE vendors SET
+                    vendor_name=?,
+                    vendor_type=?,
+                    tax_id=?,
+                    address=?,
+                    contact_person=?,
+                    contact_email=?,
+                    contact_phone=?,
+                    bank_name=?,
+                    bank_account=?,
+                    bank_address=?,
+                    bank_code=?,
+                    swift_code=?,
+                    payment_terms=?,
+                    fax_no=?,
+                    incoterms=?,
+                    order_currency=?,
+                    year_established=?,
+                    created_status=?,
+                    is_active=?,
+                    notes=?
+                WHERE vendor_code=?
+                """, (
+                    request.form.get("vendor_name"),
+                    request.form.get("vendor_type", "Supplier"),
+                    request.form.get("tax_id"),
+                    full_address,
+                    request.form.get("contact_person_sales"),
+                    request.form.get("contact_email_sales"),
+                    request.form.get("contact_phone_sales"),
+                    request.form.get("bank_name"),
+                    request.form.get("bank_account"),
+                    request.form.get("bank_address"),
+                    request.form.get("bank_code"),
+                    request.form.get("swift_code"),
+                    request.form.get("payment_terms", "NET30"),
+                    request.form.get("fax_no"),
+                    request.form.get("incoterms"),
+                    request.form.get("order_currency", "MYR"),
+                    request.form.get("year_established"),
+                    request.form.get("created_status", "Amendment"),
+                    1 if request.form.get("is_active") == "on" else 0,
+                    json.dumps(notes_data),
+                    vendor_code
+                ))
+                
+                # Create notification
+                create_notification(
+                    session["user_id"],
+                    "Vendor Updated",
+                    f"Vendor {request.form['vendor_name']} ({vendor_code}) has been updated",
+                    "INFO"
+                )
+                
+                flash(f"Vendor {vendor_code} updated successfully", "success")
+                return redirect("/vendors")
+            
+            # Parse notes for display
+            notes = {}
+            if vendor['notes']:
+                try:
+                    notes = json.loads(vendor['notes'])
+                except:
+                    pass
+            
+            return render_template(
+                "procurement_vendor_edit.html",
+                vendor=vendor,
+                notes=notes,
+                current_year=datetime.now().year
+            )
+            
+    except Exception as e:
+        print(f"⚠️ Edit vendor error: {e}")
+        flash("Error editing vendor", "danger")
+        return redirect("/vendors")
+
+@app.route("/vendors/view/<string:vendor_code>")
+@login_required
+@role_required("superadmin", "procurement", "user", "approver1", "approver2", "approver3", "approver4")
+def view_vendor(vendor_code):
+    """View vendor details"""
+    try:
+        with db() as conn:
+            vendor = conn.execute("""
+            SELECT * FROM vendors WHERE vendor_code=?
+            """, (vendor_code,)).fetchone()
+            
+            if not vendor:
+                flash("Vendor not found", "danger")
+                return redirect("/vendors")
+            
+            # Parse notes
+            notes = {}
+            if vendor['notes']:
+                try:
+                    notes = json.loads(vendor['notes'])
+                except:
+                    pass
+            
+            return render_template(
+                "vendor_view.html",
+                vendor=vendor,
+                notes=notes
+            )
+            
+    except Exception as e:
+        print(f"⚠️ View vendor error: {e}")
+        flash("Error loading vendor details", "danger")
+        return redirect("/vendors")
+
+@app.route("/vendors/delete/<string:vendor_code>", methods=["POST"])
+@login_required
+@role_required("superadmin")
+def delete_vendor(vendor_code):
+    """Delete a vendor (superadmin only)"""
+    try:
+        with db() as conn:
+            # Check if vendor is used in any PR
+            pr_count = conn.execute("""
+            SELECT COUNT(*) FROM pr WHERE vendor_code=?
+            """, (vendor_code,)).fetchone()[0]
+            
+            if pr_count > 0:
+                flash(f"Cannot delete vendor {vendor_code} - used in {pr_count} PR(s). Deactivate instead.", "warning")
+                return redirect("/vendors")
+            
+            # Delete vendor
+            conn.execute("DELETE FROM vendors WHERE vendor_code=?", (vendor_code,))
+            
+            flash(f"Vendor {vendor_code} deleted successfully", "success")
+            
+        return redirect("/vendors")
+        
+    except Exception as e:
+        print(f"⚠️ Delete vendor error: {e}")
+        flash("Error deleting vendor", "danger")
+        return redirect("/vendors")
+
+# ==================================================
+# PROCUREMENT VENDOR REGISTRATION FORM - MAIN IMPLEMENTATION
+# ==================================================
+@app.route("/procurement/vendor/new", methods=["GET", "POST"])
+@login_required
+@role_required("procurement", "superadmin")
+def procurement_vendor_form():
+    """
+    Form untuk procurement daftar vendor baru
+    Sesuai dengan Excel Vendor Registration Form
+    """
     if request.method == "POST":
         try:
+            # Validate required fields
+            required_fields = ['vendor_code', 'vendor_name', 'company_registration_no']
+            for field in required_fields:
+                if not request.form.get(field):
+                    flash(f"{field.replace('_', ' ').title()} is required", "danger")
+                    return redirect("/procurement/vendor/new")
+            
+            # Check if vendor code already exists
+            with db() as conn:
+                existing = conn.execute("""
+                SELECT vendor_code FROM vendors WHERE vendor_code=?
+                """, (request.form["vendor_code"],)).fetchone()
+                
+                if existing:
+                    flash(f"Vendor code {request.form['vendor_code']} already exists", "danger")
+                    return redirect("/procurement/vendor/new")
+            
+            # Format full address
+            full_address = ", ".join(filter(None, [
+                request.form.get("address"),
+                request.form.get("state"),
+                request.form.get("country"),
+                request.form.get("postal_code")
+            ]))
+            
+            # Insert vendor dengan kolom sesuai Excel
             with db() as conn:
                 conn.execute("""
                 INSERT INTO vendors (
                     vendor_code, vendor_name, vendor_type,
                     registration_date, tax_id, address,
                     contact_person, contact_email, contact_phone,
-                    bank_name, bank_account, payment_terms
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    bank_name, bank_account, bank_address,
+                    bank_code, swift_code, payment_terms,
+                    fax_no, incoterms, order_currency,
+                    year_established, created_status,
+                    is_active, notes
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """, (
                     request.form["vendor_code"],
                     request.form["vendor_name"],
-                    request.form["vendor_type"],
+                    request.form.get("vendor_type", "Supplier"),
                     request.form.get("registration_date"),
                     request.form.get("tax_id"),
-                    request.form.get("address"),
-                    request.form.get("contact_person"),
-                    request.form.get("contact_email"),
-                    request.form.get("contact_phone"),
+                    full_address,  # Full formatted address
+                    
+                    # Contact person
+                    request.form.get("contact_person_sales"),
+                    request.form.get("contact_email_sales"),
+                    request.form.get("contact_phone_sales"),
+                    
+                    # Bank info
                     request.form.get("bank_name"),
                     request.form.get("bank_account"),
-                    request.form.get("payment_terms", "NET30")
+                    request.form.get("bank_address"),
+                    request.form.get("bank_code"),
+                    request.form.get("swift_code"),
+                    
+                    # Payment terms
+                    request.form.get("payment_terms", "NET30"),
+                    
+                    # Additional fields
+                    request.form.get("fax_no"),
+                    request.form.get("incoterms"),
+                    request.form.get("order_currency", "MYR"),
+                    request.form.get("year_established"),
+                    request.form.get("created_status", "New Vendor"),
+                    
+                    # Status & notes
+                    1,  # is_active
+                    json.dumps({
+                        "company_registration_no": request.form.get("company_registration_no"),
+                        "sst_reg_no": request.form.get("sst_reg_no"),
+                        "tin_no": request.form.get("tin_no"),
+                        "msic_no": request.form.get("msic_no"),
+                        "goods_services": request.form.get("goods_services_details")
+                    })
                 ))
             
-            flash("Vendor added successfully!", "success")
+            # Create notification
+            create_notification(
+                session["user_id"],
+                "New Vendor Registered",
+                f"Vendor {request.form['vendor_name']} ({request.form['vendor_code']}) has been registered",
+                "SUCCESS"
+            )
+            
+            flash(f"Vendor {request.form['vendor_name']} registered successfully!", "success")
             return redirect("/vendors")
-        
-        except sqlite3.IntegrityError:
-            flash("Vendor code already exists!", "danger")
-            return redirect("/vendors/new")
+            
+        except sqlite3.IntegrityError as e:
+            print(f"⚠️ Integrity error: {e}")
+            flash("Vendor code already exists or data validation failed", "danger")
+            return redirect("/procurement/vendor/new")
+            
         except Exception as e:
-            print(f"⚠️ New vendor error: {e}")
-            flash("Error adding vendor", "danger")
-            return redirect("/vendors/new")
+            print(f"⚠️ Vendor registration error: {e}")
+            flash(f"Error registering vendor: {str(e)}", "danger")
+            return redirect("/procurement/vendor/new")
     
-    return render_template("vendor_new.html")
+    # GET request - show form
+    return render_template(
+        "procurement_vendor_form.html",
+        current_year=datetime.now().year
+    )
+
+# ==================================================
+# VENDOR API ENDPOINTS
+# ==================================================
+@app.route("/api/vendors/search")
+@login_required
+def search_vendors():
+    """Search vendors for autocomplete"""
+    query = request.args.get("q", "")
+    
+    try:
+        with db() as conn:
+            vendors = conn.execute("""
+            SELECT vendor_code, vendor_name 
+            FROM vendors 
+            WHERE (vendor_code LIKE ? OR vendor_name LIKE ?) 
+            AND is_active=1
+            LIMIT 20
+            """, (f"%{query}%", f"%{query}%")).fetchall()
+        
+        return jsonify([dict(v) for v in vendors])
+    except Exception as e:
+        return jsonify([])
+
+@app.route("/api/vendors/<string:vendor_code>")
+@login_required
+def get_vendor_details(vendor_code):
+    """Get vendor details for PR form"""
+    try:
+        with db() as conn:
+            vendor = conn.execute("""
+            SELECT vendor_code, vendor_name, address, 
+                   contact_person, contact_email, contact_phone,
+                   payment_terms
+            FROM vendors 
+            WHERE vendor_code=? AND is_active=1
+            """, (vendor_code,)).fetchone()
+            
+            if not vendor:
+                return jsonify({"success": False, "error": "Vendor not found"})
+            
+            return jsonify({"success": True, "vendor": dict(vendor)})
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)})
 
 # ==================================================
 # USER MANAGEMENT (SUPER ADMIN) - CRUD LENGKAP
@@ -1530,8 +1891,6 @@ def manage_users():
 # ==================================================
 # USER API ROUTES (CRUD OPERATIONS)
 # ==================================================
-
-# Get single user
 @app.route("/api/users/<int:user_id>", methods=["GET"])
 @login_required
 @role_required("superadmin")
@@ -1553,7 +1912,6 @@ def get_user(user_id):
     except Exception as e:
         return jsonify({"success": False, "error": str(e)}), 500
 
-# Update user
 @app.route("/api/users/<int:user_id>", methods=["PUT"])
 @login_required
 @role_required("superadmin")
@@ -1588,7 +1946,6 @@ def update_user(user_id):
     except Exception as e:
         return jsonify({"success": False, "error": str(e)}), 500
 
-# Delete user
 @app.route("/api/users/<int:user_id>", methods=["DELETE"])
 @login_required
 @role_required("superadmin")
@@ -1612,7 +1969,6 @@ def delete_user(user_id):
     except Exception as e:
         return jsonify({"success": False, "error": str(e)}), 500
 
-# Activate user
 @app.route("/api/users/<int:user_id>/activate", methods=["POST"])
 @login_required
 @role_required("superadmin")
@@ -1628,7 +1984,6 @@ def activate_user(user_id):
     except Exception as e:
         return jsonify({"success": False, "error": str(e)}), 500
 
-# Deactivate user
 @app.route("/api/users/<int:user_id>/deactivate", methods=["POST"])
 @login_required
 @role_required("superadmin")
@@ -1648,7 +2003,6 @@ def deactivate_user(user_id):
     except Exception as e:
         return jsonify({"success": False, "error": str(e)}), 500
 
-# Reset user password
 @app.route("/api/users/<int:user_id>/reset-password", methods=["POST"])
 @login_required
 @role_required("superadmin")
@@ -1677,7 +2031,6 @@ def reset_user_password(user_id):
     except Exception as e:
         return jsonify({"success": False, "error": str(e)}), 500
 
-# Update user profile (for current user)
 @app.route("/api/profile/update", methods=["POST"])
 @login_required
 def update_profile():
@@ -1711,7 +2064,6 @@ def update_profile():
     except Exception as e:
         return jsonify({"success": False, "error": str(e)}), 500
 
-# Change password (for current user)
 @app.route("/api/profile/change-password", methods=["POST"])
 @login_required
 def change_password():
@@ -1792,12 +2144,41 @@ def create_initial_users():
                         datetime.now().isoformat()
                     ))
                 
-                print("✅ Initial users created")
+                # Create sample vendors
+                sample_vendors = [
+                    ("V001", "Tech Supplies Sdn Bhd", "Supplier", "2020-01-15", 
+                     "123456789012", "123 Tech Street, KL", "Ali", "ali@techsupplies.com", 
+                     "03-12345678", "Maybank", "1234567890", "Maybank HQ", "MBBEMYKL", 
+                     "MBBEMYKLXXX", "NET30", "03-12345679", "FOB", "MYR", "2015"),
+                    ("V002", "Office Mart Bhd", "Supplier", "2019-05-20",
+                     "987654321098", "456 Office Ave, PJ", "Siti", "siti@officemart.com",
+                     "03-98765432", "CIMB", "0987654321", "CIMB PJ", "CIBBMYKL",
+                     "CIBBMYKLXXX", "NET45", "03-98765433", "EXW", "MYR", "2010"),
+                ]
+                
+                for vcode, vname, vtype, regdate, taxid, addr, contact, email, phone, 
+                    bank, baccount, baddr, bcode, swift, pterms, fax, incoterms, currency, year in sample_vendors:
+                    
+                    conn.execute("""
+                    INSERT OR IGNORE INTO vendors (
+                        vendor_code, vendor_name, vendor_type, registration_date,
+                        tax_id, address, contact_person, contact_email, contact_phone,
+                        bank_name, bank_account, bank_address, bank_code, swift_code,
+                        payment_terms, fax_no, incoterms, order_currency, year_established,
+                        is_active, notes
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    """, (
+                        vcode, vname, vtype, regdate, taxid, addr, contact, email, phone,
+                        bank, baccount, baddr, bcode, swift, pterms, fax, incoterms, currency, year,
+                        1, json.dumps({"company_registration_no": f"COMP-{vcode}"})
+                    ))
+                
+                print("✅ Initial users and vendors created")
                 print("👉 Test credentials:")
                 for username, _, _, _, _, _ in users:
                     print(f"   {username} / {username}123")
     except Exception as e:
-        print(f"⚠️ Error creating initial users: {e}")
+        print(f"⚠️ Error creating initial data: {e}")
 
 # ==================================================
 # ERROR HANDLERS
@@ -1839,26 +2220,28 @@ def teardown_db(exception=None):
 # ==================================================
 if __name__ == "__main__":
     try:
-        # Initialize database
         init_db()
-        
-        # Create initial users
         create_initial_users()
-        
-        # Run application
-        print("\n" + "="*50)
-        print("🚀 Enterprise PR System Started!")
-        print("="*50)
-        print(f"📊 Access the application at: http://127.0.0.1:5000")
-        print("🔐 Default credentials:")
-        print("   admin / admin123 (Super Admin)")
-        print("   user1 / user123 (Regular User)")
-        print("   approver1 / approver123 (Approver 1)")
-        print("   procurement1 / procurement123 (Procurement)")
-        print("="*50 + "\n")
-        
-        app.run(debug=True, host='0.0.0.0', port=5000, threaded=True)
-        
+
+        app.run(
+            debug=True,
+            host="0.0.0.0",
+            port=5000,
+            threaded=True
+        )
     except Exception as e:
         print(f"❌ Failed to start application: {e}")
         close_db_connections()
+
+# ==================================================
+# RENDER / GUNICORN SAFE STARTUP
+# ==================================================
+@app.before_request
+def _render_startup_guard():
+    """
+    Initialize DB once per process (Render/Gunicorn safe)
+    """
+    if not getattr(app, "_db_initialized", False):
+        init_db()
+        create_initial_users()
+        app._db_initialized = True

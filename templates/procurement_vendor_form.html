@@ -1,0 +1,401 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Vendor Registration Form - Procurement</title>
+    
+    <!-- Bootstrap 5 CSS -->
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/css/bootstrap.min.css" rel="stylesheet">
+    
+    <!-- Font Awesome -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+    
+    <style>
+        body {
+            background-color: #f8f9fa;
+            padding-top: 20px;
+            padding-bottom: 50px;
+        }
+        
+        .form-container {
+            background: white;
+            padding: 30px;
+            border-radius: 10px;
+            box-shadow: 0 2px 15px rgba(0,0,0,0.1);
+            margin-bottom: 30px;
+        }
+        
+        .form-header {
+            border-bottom: 3px solid #0d6efd;
+            padding-bottom: 15px;
+            margin-bottom: 25px;
+        }
+        
+        .section-title {
+            background-color: #e9ecef;
+            padding: 10px 15px;
+            border-radius: 5px;
+            margin-top: 25px;
+            margin-bottom: 15px;
+            font-weight: bold;
+            color: #495057;
+        }
+        
+        .required::after {
+            content: " *";
+            color: #dc3545;
+        }
+        
+        .form-label {
+            font-weight: 500;
+            color: #495057;
+        }
+        
+        .bank-info {
+            background-color: #f8f9fa;
+            padding: 15px;
+            border-radius: 5px;
+            border-left: 4px solid #0d6efd;
+        }
+        
+        .contact-person-row {
+            background-color: #fff3cd;
+            padding: 10px;
+            border-radius: 5px;
+            margin-bottom: 10px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <!-- Header -->
+        <div class="row mb-4">
+            <div class="col-12">
+                <div class="d-flex justify-content-between align-items-center">
+                    <h2><i class="fas fa-building me-2"></i>Vendor Registration Form</h2>
+                    <div class="text-end">
+                        <div class="text-muted small">For Procurement Use Only</div>
+                        <div class="badge bg-primary">Ref: VRF-{{ datetime.now().strftime('%Y%m%d') }}-{{ "%04d" | format(range(1, 10000)|random) }}</div>
+                    </div>
+                </div>
+                <p class="text-muted">Complete all required fields to register a new vendor</p>
+            </div>
+        </div>
+
+        <!-- Flash Messages -->
+        {% with messages = get_flashed_messages(with_categories=true) %}
+            {% if messages %}
+                {% for category, message in messages %}
+                    <div class="alert alert-{{ category }} alert-dismissible fade show" role="alert">
+                        {{ message }}
+                        <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+                    </div>
+                {% endfor %}
+            {% endif %}
+        {% endwith %}
+
+        <!-- Main Form -->
+        <div class="form-container">
+            <form method="POST" action="{{ url_for('procurement_vendor_form') }}">
+                
+                <!-- Section 1: Company Details -->
+                <div class="form-header">
+                    <h4><i class="fas fa-building me-2"></i>Section 1: Company Details</h4>
+                </div>
+                
+                <!-- Row 1: Basic Info -->
+                <div class="row mb-3">
+                    <div class="col-md-6">
+                        <label class="form-label required">Company Name</label>
+                        <input type="text" class="form-control" name="vendor_name" required>
+                    </div>
+                    <div class="col-md-6">
+                        <label class="form-label required">Vendor Code</label>
+                        <div class="input-group">
+                            <span class="input-group-text">V-</span>
+                            <input type="text" class="form-control" name="vendor_code" required>
+                        </div>
+                        <small class="text-muted">Unique identifier for this vendor</small>
+                    </div>
+                </div>
+                
+                <!-- Row 2: Registration Info -->
+                <div class="row mb-3">
+                    <div class="col-md-4">
+                        <label class="form-label required">Company Registration No.</label>
+                        <input type="text" class="form-control" name="company_registration_no" required>
+                    </div>
+                    <div class="col-md-4">
+                        <label class="form-label">SST Registration No.</label>
+                        <input type="text" class="form-control" name="sst_reg_no">
+                    </div>
+                    <div class="col-md-4">
+                        <label class="form-label">TIN No.</label>
+                        <input type="text" class="form-control" name="tin_no">
+                    </div>
+                </div>
+                
+                <!-- Address Section -->
+                <div class="section-title">Address Information</div>
+                
+                <div class="row mb-3">
+                    <div class="col-12">
+                        <label class="form-label required">Address</label>
+                        <textarea class="form-control" name="address" rows="2" required></textarea>
+                    </div>
+                </div>
+                
+                <div class="row mb-3">
+                    <div class="col-md-3">
+                        <label class="form-label">State</label>
+                        <input type="text" class="form-control" name="state">
+                    </div>
+                    <div class="col-md-3">
+                        <label class="form-label">Country</label>
+                        <input type="text" class="form-control" name="country" value="Malaysia">
+                    </div>
+                    <div class="col-md-3">
+                        <label class="form-label">Postal Code</label>
+                        <input type="text" class="form-control" name="postal_code">
+                    </div>
+                    <div class="col-md-3">
+                        <label class="form-label">MSIC No.</label>
+                        <input type="text" class="form-control" name="msic_no">
+                    </div>
+                </div>
+                
+                <!-- Contact Information -->
+                <div class="section-title">Contact Information</div>
+                
+                <div class="row mb-3">
+                    <div class="col-md-4">
+                        <label class="form-label">Telephone No.</label>
+                        <input type="tel" class="form-control" name="contact_phone_sales">
+                    </div>
+                    <div class="col-md-4">
+                        <label class="form-label">Fax No.</label>
+                        <input type="tel" class="form-control" name="fax_no">
+                    </div>
+                    <div class="col-md-4">
+                        <label class="form-label required">Email (for e-invoicing)</label>
+                        <input type="email" class="form-control" name="contact_email_sales" required>
+                        <small class="text-muted">Will be used for electronic invoices</small>
+                    </div>
+                </div>
+                
+                <div class="row mb-3">
+                    <div class="col-md-4">
+                        <label class="form-label">Contact Person (Sales)</label>
+                        <input type="text" class="form-control" name="contact_person_sales">
+                    </div>
+                    <div class="col-md-4">
+                        <label class="form-label">Year Established</label>
+                        <input type="number" class="form-control" name="year_established" min="1900" max="{{ current_year }}">
+                    </div>
+                    <div class="col-md-4">
+                        <label class="form-label">Vendor Type</label>
+                        <select class="form-select" name="vendor_type">
+                            <option value="Supplier">Supplier</option>
+                            <option value="Contractor">Contractor</option>
+                            <option value="Service Provider">Service Provider</option>
+                            <option value="Consultant">Consultant</option>
+                        </select>
+                    </div>
+                </div>
+                
+                <!-- Payment Terms -->
+                <div class="section-title">Payment & Delivery Terms</div>
+                
+                <div class="row mb-3">
+                    <div class="col-md-4">
+                        <label class="form-label">Payment Terms</label>
+                        <select class="form-select" name="payment_terms">
+                            <option value="NET30">NET 30</option>
+                            <option value="NET45">NET 45</option>
+                            <option value="NET60">NET 60</option>
+                            <option value="Upon Delivery">Upon Delivery</option>
+                            <option value="Advance Payment">Advance Payment</option>
+                        </select>
+                    </div>
+                    <div class="col-md-4">
+                        <label class="form-label">Incoterms</label>
+                        <select class="form-select" name="incoterms">
+                            <option value="">Select...</option>
+                            <option value="EXW">EXW - Ex Works</option>
+                            <option value="FOB">FOB - Free On Board</option>
+                            <option value="CIF">CIF - Cost, Insurance & Freight</option>
+                            <option value="DDP">DDP - Delivered Duty Paid</option>
+                        </select>
+                    </div>
+                    <div class="col-md-4">
+                        <label class="form-label">Order Currency</label>
+                        <select class="form-select" name="order_currency">
+                            <option value="MYR">MYR - Malaysian Ringgit</option>
+                            <option value="USD">USD - US Dollar</option>
+                            <option value="SGD">SGD - Singapore Dollar</option>
+                            <option value="EUR">EUR - Euro</option>
+                        </select>
+                    </div>
+                </div>
+                
+                <!-- Registration Status -->
+                <div class="row mb-4">
+                    <div class="col-md-6">
+                        <label class="form-label">Created Status</label>
+                        <div class="form-check">
+                            <input class="form-check-input" type="radio" name="created_status" value="New Vendor" checked>
+                            <label class="form-check-label">New Vendor</label>
+                        </div>
+                        <div class="form-check">
+                            <input class="form-check-input" type="radio" name="created_status" value="Amendment">
+                            <label class="form-check-label">Amendment</label>
+                        </div>
+                        <div class="form-check">
+                            <input class="form-check-input" type="radio" name="created_status" value="Renew">
+                            <label class="form-check-label">Renew</label>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- Section 2: Banking Information -->
+                <div class="form-header mt-5">
+                    <h4><i class="fas fa-university me-2"></i>Section 2: Banking Information</h4>
+                </div>
+                
+                <div class="bank-info mb-4">
+                    <div class="row mb-3">
+                        <div class="col-md-6">
+                            <label class="form-label required">Bank Name</label>
+                            <input type="text" class="form-control" name="bank_name" required>
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label required">Bank Account No.</label>
+                            <input type="text" class="form-control" name="bank_account" required>
+                        </div>
+                    </div>
+                    
+                    <div class="row mb-3">
+                        <div class="col-md-12">
+                            <label class="form-label">Bank Address</label>
+                            <textarea class="form-control" name="bank_address" rows="2"></textarea>
+                        </div>
+                    </div>
+                    
+                    <div class="row">
+                        <div class="col-md-3">
+                            <label class="form-label">Bank Code</label>
+                            <input type="text" class="form-control" name="bank_code">
+                        </div>
+                        <div class="col-md-3">
+                            <label class="form-label">Branch Code</label>
+                            <input type="text" class="form-control" name="branch_code">
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label">SWIFT Code</label>
+                            <input type="text" class="form-control" name="swift_code">
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- Section 3: Goods/Services Details -->
+                <div class="form-header mt-5">
+                    <h4><i class="fas fa-boxes me-2"></i>Section 3: Goods/Services Offered</h4>
+                </div>
+                
+                <div class="row mb-4">
+                    <div class="col-12">
+                        <label class="form-label">Details on goods or services supplied</label>
+                        <textarea class="form-control" name="goods_services_details" rows="4" 
+                                  placeholder="Describe the main products or services this vendor provides..."></textarea>
+                    </div>
+                </div>
+                
+                <!-- Buttons -->
+                <div class="row mt-5">
+                    <div class="col-12">
+                        <div class="d-flex justify-content-between">
+                            <a href="{{ url_for('vendor_list') }}" class="btn btn-secondary">
+                                <i class="fas fa-arrow-left me-2"></i>Back to Vendor List
+                            </a>
+                            <div>
+                                <button type="reset" class="btn btn-outline-secondary me-2">
+                                    <i class="fas fa-redo me-2"></i>Reset Form
+                                </button>
+                                <button type="submit" class="btn btn-primary">
+                                    <i class="fas fa-save me-2"></i>Register Vendor
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- Disclaimer -->
+                <div class="row mt-4">
+                    <div class="col-12">
+                        <div class="alert alert-info small">
+                            <i class="fas fa-info-circle me-2"></i>
+                            <strong>Note:</strong> Completing this form does not automatically mean the vendor will be added to our database. 
+                            There will be a review and evaluation process that must take place first.
+                        </div>
+                    </div>
+                </div>
+                
+            </form>
+        </div>
+    </div>
+
+    <!-- Bootstrap JS -->
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/js/bootstrap.bundle.min.js"></script>
+    
+    <!-- Form Validation -->
+    <script>
+        document.addEventListener('DOMContentLoaded', function() {
+            const form = document.querySelector('form');
+            
+            form.addEventListener('submit', function(event) {
+                let isValid = true;
+                let errorMessage = '';
+                
+                // Check required fields
+                const requiredFields = form.querySelectorAll('[required]');
+                requiredFields.forEach(field => {
+                    if (!field.value.trim()) {
+                        isValid = false;
+                        field.classList.add('is-invalid');
+                        errorMessage = 'Please fill in all required fields (marked with *)';
+                    } else {
+                        field.classList.remove('is-invalid');
+                    }
+                });
+                
+                // Check vendor code format
+                const vendorCode = form.querySelector('input[name="vendor_code"]');
+                if (vendorCode.value && !/^[A-Z0-9]{3,10}$/.test(vendorCode.value)) {
+                    isValid = false;
+                    vendorCode.classList.add('is-invalid');
+                    errorMessage = 'Vendor code must be 3-10 alphanumeric characters (uppercase)';
+                }
+                
+                if (!isValid) {
+                    event.preventDefault();
+                    alert(errorMessage);
+                }
+            });
+            
+            // Auto-generate vendor code from company name
+            const companyName = document.querySelector('input[name="vendor_name"]');
+            const vendorCode = document.querySelector('input[name="vendor_code"]');
+            
+            companyName.addEventListener('blur', function() {
+                if (!vendorCode.value && companyName.value) {
+                    // Generate simple code: first 3 letters + random numbers
+                    const prefix = companyName.value.replace(/[^A-Z]/gi, '').substring(0, 3).toUpperCase();
+                    const random = Math.floor(Math.random() * 1000);
+                    vendorCode.value = prefix + random.toString().padStart(3, '0');
+                }
+            });
+        });
+    </script>
+</body>
+</html>
