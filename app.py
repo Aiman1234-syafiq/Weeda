@@ -2156,8 +2156,14 @@ def create_initial_users():
                      "CIBBMYKLXXX", "NET45", "03-98765433", "EXW", "MYR", "2010"),
                 ]
                 
-                for vcode, vname, vtype, regdate, taxid, addr, contact, email, phone, 
-                    bank, baccount, baddr, bcode, swift, pterms, fax, incoterms, currency, year in sample_vendors:
+                for (
+    vcode, vname, vtype, regdate, taxid,
+    addr, contact, email, phone,
+    bank, baccount, baddr, bcode, swift,
+    pterms, fax, incoterms, currency, year
+) in sample_vendors:
+
+                
                     
                     conn.execute("""
                     INSERT OR IGNORE INTO vendors (
