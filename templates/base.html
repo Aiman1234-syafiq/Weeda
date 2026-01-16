@@ -975,7 +975,7 @@
                     </li>
                     {% endif %}
                     
-                    {% if session.role == 'procurement' %}
+                    {% if session.role in ['procurement', 'superadmin'] %}
                     <li class="nav-item">
                         <a href="/procurement" class="nav-link {% if request.path == '/procurement' %}active{% endif %}">
                             <i class="fas fa-shopping-cart"></i>
