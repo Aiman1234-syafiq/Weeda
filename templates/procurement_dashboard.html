@@ -177,10 +177,13 @@
             </thead>
             <tbody>
                 {% for pr in action_pr %}
-                {% set days_pending = pr.days_pending %}
-                {% set is_urgent = days_pending > 5 %}
-                {% set is_warning = days_pending > 2 %}
-                <tr class="{% if is_urgent %}table-danger{% elif is_warning %}table-warning{% endif %}">
+    {% set days_pending = 0 %}
+    {% if pr.created_at %}
+        {% set days_pending = 1 %}
+    {% endif %}
+    {% set is_urgent = days_pending > 5 %}
+    {% set is_warning = days_pending > 2 %}
+    <tr class="{% if is_urgent %}table-danger{% elif is_warning %}table-warning{% endif %}">
                     <td>
                         <input type="checkbox" class="pr-checkbox" value="{{ pr.id }}" 
                                data-amount="{{ pr.total_amount }}" 
