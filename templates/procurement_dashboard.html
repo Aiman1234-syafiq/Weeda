@@ -1,0 +1,89 @@
+{% extends "base.html" %}
+
+{% block content %}
+
+<div class="page-header">
+    <div>
+        <h1 class="page-title">
+            <i class="fas fa-chart-pie"></i> Procurement Dashboard
+        </h1>
+        <p class="page-subtitle">
+            Overview of approved PRs, pending actions and procurement performance
+        </p>
+    </div>
+</div>
+
+<!-- KPI SUMMARY -->
+<div class="quick-actions-grid">
+    <div class="card text-center">
+        <h4>Total Approved PR</h4>
+        <h2>{{ kpi.total_approved or 0 }}</h2>
+    </div>
+
+    <div class="card text-center">
+        <h4>Pending Receive</h4>
+        <h2 class="text-warning">{{ kpi.pending_receive or 0 }}</h2>
+    </div>
+
+    <div class="card text-center">
+        <h4>Received This Month</h4>
+        <h2 class="text-success">{{ kpi.received_this_month or 0 }}</h2>
+    </div>
+</div>
+
+<!-- ACTION REQUIRED -->
+<div class="card">
+    <div class="card-header">
+        <h3 class="card-title">
+            <i class="fas fa-exclamation-circle"></i> PR Requiring Action
+        </h3>
+    </div>
+
+    <div class="table-responsive">
+        <table class="table">
+            <thead>
+                <tr>
+                    <th>PR No</th>
+                    <th>Department</th>
+                    <th>Total Amount</th>
+                    <th>Days Pending</th>
+                    <th>Action</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for pr in action_pr %}
+                {% set days = (datetime.now() - datetime.fromisoformat(pr.created_at)).days %}
+                <tr>
+                    <td>{{ pr.pr_no }}</td>
+                    <td>{{ pr.department }}</td>
+                    <td>RM {{ "%.2f"|format(pr.total_amount) }}</td>
+                    <td>
+                        {% if days <= 2 %}
+                            <span class="status-badge status-approved">{{ days }} days</span>
+                        {% elif days <= 5 %}
+                            <span class="status-badge status-pending">{{ days }} days</span>
+                        {% else %}
+                            <span class="status-badge status-rejected">{{ days }} days</span>
+                        {% endif %}
+                    </td>
+                    <td>
+                        <form method="POST" action="/procurement/receive/{{ pr.id }}">
+                            <button class="btn btn-success btn-sm">
+                                <i class="fas fa-check"></i> Receive
+                            </button>
+                        </form>
+                    </td>
+                </tr>
+                {% else %}
+                <tr>
+                    <td colspan="5" class="text-center text-muted">
+                        No pending PRs 🎉
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+
+{% endblock %}

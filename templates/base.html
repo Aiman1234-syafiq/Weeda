@@ -977,22 +977,35 @@
                     
                     {% if session.role in ['procurement', 'superadmin'] %}
                     <li class="nav-item">
-                        <a href="/procurement" class="nav-link {% if request.path == '/procurement' %}active{% endif %}">
-                            <i class="fas fa-shopping-cart"></i>
+                        <a href="/procurement/dashboard"
+                           class="nav-link {% if request.path == '/procurement/dashboard' %}active{% endif %}">
+                            <i class="fas fa-chart-pie"></i>
                             <span>Procurement Dashboard</span>
+                        </a>
+                    </li>
+
+                    <li class="nav-item">
+                        <a href="/procurement"
+                           class="nav-link {% if request.path == '/procurement' %}active{% endif %}">
+                            <i class="fas fa-clipboard-list"></i>
+                            <span>Approved PR</span>
                             {% if stats and stats.pending_receipt %}
                             <span class="nav-badge">{{ stats.pending_receipt }}</span>
                             {% endif %}
                         </a>
                     </li>
+
                     <li class="nav-item">
-                        <a href="/vendors" class="nav-link {% if request.path.startswith('/vendors') and not request.path.startswith('/vendors/new') %}active{% endif %}">
+                        <a href="/vendors"
+                           class="nav-link {% if request.path.startswith('/vendors') and not request.path.startswith('/vendors/new') %}active{% endif %}">
                             <i class="fas fa-building"></i>
                             <span>Vendor Database</span>
                         </a>
                     </li>
+
                     <li class="nav-item">
-                        <a href="{{ url_for('procurement_vendor_form') }}" class="nav-link {% if request.path.startswith('/procurement/vendor/new') or request.path.startswith('/vendors/new') %}active{% endif %}">
+                        <a href="{{ url_for('procurement_vendor_form') }}"
+                           class="nav-link {% if request.path.startswith('/procurement/vendor/new') or request.path.startswith('/vendors/new') %}active{% endif %}">
                             <i class="fas fa-user-plus"></i>
                             <span>Register New Vendor</span>
                             <span class="nav-badge" style="background: var(--success);">NEW</span>
@@ -1308,7 +1321,8 @@
                 '/dashboard': 'Dashboard',
                 '/pr/new': 'Create PR',
                 '/approve': 'Approvals',
-                '/procurement': 'Procurement Dashboard',
+                '/procurement/dashboard': 'Procurement Dashboard',
+                '/procurement': 'Approved PR',
                 '/procurement/vendor/new': 'Register New Vendor',
                 '/vendors': 'Vendor Database',
                 '/reports': 'Reports',

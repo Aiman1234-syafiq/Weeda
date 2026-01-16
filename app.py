@@ -2213,6 +2213,35 @@ def internal_error(error):
                          error_description="Something went wrong on our end.",
                          datetime=datetime), 500
 
+@app.route("/procurement/dashboard")
+@login_required
+@role_required("procurement")
+def procurement_dashboard():
+    with db() as conn:
+        kpi = conn.execute("""
+            SELECT
+                COUNT(*) AS total_approved,
+                SUM(CASE WHEN procurement_received_date IS NULL THEN 1 ELSE 0 END) AS pending_receive
+            FROM pr
+            WHERE status='APPROVED'
+        """).fetchone()
+
+        action_pr = conn.execute("""
+            SELECT id, pr_no, department, total_amount, created_at
+            FROM pr
+            WHERE status='APPROVED'
+            AND procurement_received_date IS NULL
+            ORDER BY created_at ASC
+            LIMIT 10
+        """).fetchall()
+
+    return render_template(
+        "procurement_dashboard.html",
+        kpi=kpi,
+        action_pr=action_pr
+    )
+
+
 # ==================================================
 # APPLICATION SHUTDOWN HANDLER
 # ==================================================
