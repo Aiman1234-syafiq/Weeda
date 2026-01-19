@@ -20,11 +20,14 @@ from werkzeug.security import generate_password_hash, check_password_hash
 # BASIC CONFIG
 # ==================================================
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-DB_PATH = os.environ.get("DB_PATH", os.path.join(BASE_DIR, "pr_enterprise.db"))
+DB_PATH = os.environ.get(
+    "DB_PATH",
+    "/data/pr_enterprise.db"
+)
 
 # File upload config
-UPLOAD_FOLDER = os.path.join(BASE_DIR, 'uploads')
-QUOTATION_FOLDER = os.path.join(UPLOAD_FOLDER, 'quotations')
+UPLOAD_FOLDER = "/data/uploads"
+QUOTATION_FOLDER = "/data/uploads/quotations"
 ALLOWED_EXTENSIONS = {'pdf', 'jpg', 'jpeg', 'png', 'doc', 'docx'}
 MAX_FILE_SIZE = 10 * 1024 * 1024  # 10MB
 
@@ -1399,67 +1402,211 @@ def budget_exceptions_list():
         return redirect("/dashboard")
 
 # ==================================================
-# PROCUREMENT - UPDATED DENGAN PO LOGIC
+# PROCUREMENT - REDIRECT TO DASHBOARD
 # ==================================================
 @app.route("/procurement")
 @login_required
 @role_required("procurement", "superadmin")
 def procurement():
+    """Redirect to procurement dashboard"""
+    return redirect("/procurement/dashboard")
+
+# ==================================================
+# PROCUREMENT DASHBOARD (KPI + ACTIONS + CHARTS)
+# ==================================================
+@app.route("/procurement/dashboard")
+@login_required
+@role_required("procurement", "superadmin")
+def procurement_dashboard():
     try:
         with db() as conn:
-            # Get submitted PRs yang belum ada PO (termasuk budget exception pending)
-            prs = conn.execute("""
-            SELECT p.*, 
-                   u.full_name as requester_name_full,
-                   u.department as requester_dept,
-                   (SELECT COUNT(*) FROM pr_items WHERE pr_id=p.id) as item_count
-            FROM pr p
-            JOIN users u ON p.created_by = u.id
-            WHERE p.status IN ('SUBMITTED', 'BUDGET_EXCEPTION_PENDING')
-            AND p.id NOT IN (SELECT pr_id FROM po)  # KEY LOGIC - HANYA YANG BELUM ADA PO
-            ORDER BY p.created_at DESC
-            """).fetchall()
-            
-            # Get PO list (terbaru)
-            pos = conn.execute("""
-            SELECT po.*, pr.pr_no, u.full_name as requester_name
-            FROM po
-            JOIN pr ON po.pr_id = pr.id
-            JOIN users u ON pr.created_by = u.id
-            ORDER BY po.created_at DESC
-            LIMIT 10
-            """).fetchall()
-            
-            # Procurement stats
-            stats = {
-                'total_submitted': len(prs),
-                'total_pos': conn.execute("SELECT COUNT(*) FROM po").fetchone()[0],
-                'pending_po': len(prs),
-                'without_quotation': conn.execute("""
-                    SELECT COUNT(*) FROM pr 
-                    WHERE status IN ('SUBMITTED', 'BUDGET_EXCEPTION_PENDING')
-                    AND quotation_filename IS NULL
-                    AND id NOT IN (SELECT pr_id FROM po)
-                """).fetchone()[0]
+            # KPI DATA (based on your current PR lifecycle)
+            kpi_row = conn.execute("""
+                SELECT
+                    -- PR that procurement should work on (no PO yet)
+                    SUM(CASE 
+                        WHEN p.status IN ('SUBMITTED','BUDGET_EXCEPTION_PENDING')
+                         AND p.id NOT IN (SELECT pr_id FROM po)
+                        THEN 1 ELSE 0 
+                    END) AS total_submitted,
+
+                    -- PR pending PO (same definition)
+                    SUM(CASE 
+                        WHEN p.status IN ('SUBMITTED','BUDGET_EXCEPTION_PENDING')
+                         AND p.id NOT IN (SELECT pr_id FROM po)
+                        THEN 1 ELSE 0 
+                    END) AS pending_po,
+
+                    -- PR that already has PO
+                    SUM(CASE 
+                        WHEN p.id IN (SELECT pr_id FROM po)
+                        THEN 1 ELSE 0 
+                    END) AS po_created,
+
+                    -- AVG days from PR created_at to PO created_at (only where PO exists)
+                    COALESCE(AVG(
+                        julianday(po.created_at) - julianday(p.created_at)
+                    ), 0) AS avg_cycle_days
+
+                FROM pr p
+                LEFT JOIN po ON po.pr_id = p.id
+            """).fetchone()
+
+            total_submitted = int(kpi_row["total_submitted"] or 0)
+            pending_po = int(kpi_row["pending_po"] or 0)
+            po_created = int(kpi_row["po_created"] or 0)
+            avg_cycle_days = float(kpi_row["avg_cycle_days"] or 0)
+
+            # Pending value (sum total_amount for PRs waiting PO)
+            pending_value_row = conn.execute("""
+                SELECT COALESCE(SUM(total_amount), 0) AS total
+                FROM pr
+                WHERE status IN ('SUBMITTED','BUDGET_EXCEPTION_PENDING')
+                AND id NOT IN (SELECT pr_id FROM po)
+            """).fetchone()
+
+            pending_value = float(pending_value_row["total"] or 0)
+
+            # KPI dict to template
+            kpi = {
+                "total_submitted": total_submitted,
+                "pending_po": pending_po,
+                "po_created": po_created,
+                "avg_cycle_days": round(avg_cycle_days, 1),
+                "pending_value": pending_value,
+                "monthly_growth": 0,
+                "po_created_percentage": round((po_created / (po_created + total_submitted) * 100) if (po_created + total_submitted) > 0 else 0, 1),
             }
-        
-        # Audit log
-        audit_log(
-            session["user_id"],
-            "VIEW_PROCUREMENT",
-            details={"stats": stats}
-        )
-        
-        return render_template(
-            "procurement_enhanced.html",
-            prs=prs,
-            pos=pos,
-            stats=stats
-        )
-        
+
+            # ACTION REQUIRED PRs (need PO) - LIMIT 20
+            action_pr = conn.execute("""
+                SELECT 
+                    p.id,
+                    p.pr_no,
+                    p.department,
+                    p.vendor_name,
+                    p.total_amount,
+                    p.status,
+                    p.created_at,
+                    CAST(julianday('now') - julianday(p.created_at) AS INTEGER) as days_pending,
+                    u.full_name as requester_name_full
+                FROM pr p
+                JOIN users u ON p.created_by = u.id
+                WHERE p.status IN ('SUBMITTED','BUDGET_EXCEPTION_PENDING')
+                AND p.id NOT IN (SELECT pr_id FROM po)
+                ORDER BY p.created_at ASC
+                LIMIT 20
+            """).fetchall()
+
+            # RECENT PO CREATED (recent activity) - LIMIT 10
+            recent_po = conn.execute("""
+                SELECT
+                    po.id as po_id,
+                    po.po_no,
+                    po.po_date,
+                    po.total_amount,
+                    po.created_at as po_created_at,
+                    pr.id as pr_id,
+                    pr.pr_no,
+                    pr.department,
+                    pr.vendor_name,
+                    u.full_name as requester_name,
+                    pu.full_name as po_creator_name
+                FROM po
+                JOIN pr ON po.pr_id = pr.id
+                JOIN users u ON pr.created_by = u.id
+                LEFT JOIN users pu ON po.created_by = pu.id
+                WHERE po.status='ACTIVE'
+                ORDER BY po.created_at DESC
+                LIMIT 10
+            """).fetchall()
+
+            # VENDORS for dropdown
+            vendors = conn.execute("""
+                SELECT id, vendor_name, vendor_code
+                FROM vendors
+                WHERE is_active=1
+                ORDER BY vendor_name
+                LIMIT 50
+            """).fetchall()
+
+            # CHART DATA - Monthly PR Submitted (Last 6 Months)
+            current_date = datetime.now()
+            current_year = current_date.year
+            current_month = current_date.month
+
+            monthly_labels = []
+            monthly_data = []
+            monthly_po_data = []
+
+            for i in range(5, -1, -1):
+                target_month = current_month - i
+                target_year = current_year
+                if target_month <= 0:
+                    target_month += 12
+                    target_year -= 1
+
+                month_key = f"{target_year:04d}-{target_month:02d}"
+                month_name = datetime(target_year, target_month, 1).strftime("%b")
+                monthly_labels.append(month_name)
+
+                # PR created that month
+                pr_count = conn.execute("""
+                    SELECT COUNT(*) as count
+                    FROM pr
+                    WHERE strftime('%Y-%m', created_at) = ?
+                """, (month_key,)).fetchone()
+                monthly_data.append(int(pr_count["count"] or 0))
+
+                # PO created that month
+                po_count = conn.execute("""
+                    SELECT COUNT(*) as count
+                    FROM po
+                    WHERE strftime('%Y-%m', created_at) = ?
+                    AND status='ACTIVE'
+                """, (month_key,)).fetchone()
+                monthly_po_data.append(int(po_count["count"] or 0))
+
+            # CHART DATA - Department Distribution (PR waiting PO)
+            dept_rows = conn.execute("""
+                SELECT department, COUNT(*) as count
+                FROM pr
+                WHERE status IN ('SUBMITTED','BUDGET_EXCEPTION_PENDING')
+                AND id NOT IN (SELECT pr_id FROM po)
+                GROUP BY department
+                ORDER BY count DESC
+                LIMIT 8
+            """).fetchall()
+
+            chart_data = {
+                "monthly_labels": monthly_labels,
+                "monthly_data": monthly_data,          # PR created
+                "monthly_po_data": monthly_po_data,    # PO created
+                "department_labels": [r["department"] for r in dept_rows],
+                "department_data": [int(r["count"]) for r in dept_rows],
+                "yearly_labels": [str(current_year - 3), str(current_year - 2), str(current_year - 1), str(current_year)],
+                "yearly_data": [0, 0, 0, total_submitted + po_created],
+            }
+
+            # Audit log
+            audit_log(
+                session.get("user_id"),
+                "VIEW_PROCUREMENT_DASHBOARD",
+                details={"kpi": kpi}
+            )
+
+            return render_template(
+                "procurement_dashboard.html",
+                kpi=kpi,
+                action_pr=action_pr,
+                recent_po=recent_po,
+                vendors=vendors,
+                chart_data=chart_data
+            )
+
     except Exception as e:
-        print(f"⚠️ Procurement error: {e}")
-        flash("Error loading procurement page", "danger")
+        print(f"⚠️ Procurement dashboard error: {e}")
+        flash("Error loading procurement dashboard", "danger")
         return redirect("/dashboard")
 
 # ==================================================
@@ -1481,7 +1628,7 @@ def create_po(pr_id):
             
             if existing_po:
                 flash(f"PR ini sudah ada PO: {existing_po['po_no']}", "warning")
-                return redirect("/procurement")
+                return redirect("/procurement/dashboard")
             
             # Get PR details
             pr = conn.execute("""
@@ -1493,12 +1640,12 @@ def create_po(pr_id):
             
             if not pr:
                 flash("PR tidak ditemukan atau belum dalam status SUBMITTED/BUDGET_EXCEPTION_PENDING", "danger")
-                return redirect("/procurement")
+                return redirect("/procurement/dashboard")
             
             # Check if PR has quotation - ENFORCE RULE
             if not pr['quotation_filename']:
                 flash(f"Cannot create PO. PR {pr['pr_no']} must have quotation file.", "danger")
-                return redirect("/procurement")
+                return redirect("/procurement/dashboard")
             
             if request.method == "POST":
                 # Validasi PO number
@@ -1598,7 +1745,7 @@ def create_po(pr_id):
     except Exception as e:
         print(f"⚠️ Create PO error: {e}")
         flash("Error creating PO", "danger")
-        return redirect("/procurement")
+        return redirect("/procurement/dashboard")
 
 @app.route("/procurement/po/list")
 @login_required
@@ -1664,7 +1811,7 @@ def po_list():
     except Exception as e:
         print(f"⚠️ PO list error: {e}")
         flash("Error loading PO list", "danger")
-        return redirect("/procurement")
+        return redirect("/procurement/dashboard")
 
 @app.route("/procurement/po/<int:po_id>")
 @login_required
@@ -2718,212 +2865,6 @@ def internal_error(error):
                          datetime=datetime), 500
 
 # ==================================================
-# PROCUREMENT DASHBOARD (KPI + ACTIONS + CHARTS)
-# ==================================================
-@app.route("/procurement/dashboard")
-@login_required
-@role_required("procurement", "superadmin")
-def procurement_dashboard():
-    try:
-        with db() as conn:
-            # KPI DATA (based on your current PR lifecycle)
-            # - total_submitted: PR ready for procurement action (no PO yet)
-            # - pending_po: same as above (explicit)
-            # - po_created: PR that already has PO (status PO_CREATED or exists in po table)
-            # - avg_cycle_days: avg days from PR created_at to PO created_at (where PO exists)
-
-            kpi_row = conn.execute("""
-                SELECT
-                    -- PR that procurement should work on (no PO yet)
-                    SUM(CASE 
-                        WHEN p.status IN ('SUBMITTED','BUDGET_EXCEPTION_PENDING')
-                         AND p.id NOT IN (SELECT pr_id FROM po)
-                        THEN 1 ELSE 0 
-                    END) AS total_submitted,
-
-                    -- PR pending PO (same definition)
-                    SUM(CASE 
-                        WHEN p.status IN ('SUBMITTED','BUDGET_EXCEPTION_PENDING')
-                         AND p.id NOT IN (SELECT pr_id FROM po)
-                        THEN 1 ELSE 0 
-                    END) AS pending_po,
-
-                    -- PR that already has PO
-                    SUM(CASE 
-                        WHEN p.id IN (SELECT pr_id FROM po)
-                        THEN 1 ELSE 0 
-                    END) AS po_created,
-
-                    -- AVG days from PR created_at to PO created_at (only where PO exists)
-                    COALESCE(AVG(
-                        julianday(po.created_at) - julianday(p.created_at)
-                    ), 0) AS avg_cycle_days
-
-                FROM pr p
-                LEFT JOIN po ON po.pr_id = p.id
-            """).fetchone()
-
-            total_submitted = int(kpi_row["total_submitted"] or 0)
-            pending_po = int(kpi_row["pending_po"] or 0)
-            po_created = int(kpi_row["po_created"] or 0)
-            avg_cycle_days = float(kpi_row["avg_cycle_days"] or 0)
-
-            # Pending value (sum total_amount for PRs waiting PO)
-            pending_value_row = conn.execute("""
-                SELECT COALESCE(SUM(total_amount), 0) AS total
-                FROM pr
-                WHERE status IN ('SUBMITTED','BUDGET_EXCEPTION_PENDING')
-                AND id NOT IN (SELECT pr_id FROM po)
-            """).fetchone()
-
-            pending_value = float(pending_value_row["total"] or 0)
-
-            # KPI dict to template
-            kpi = {
-                "total_submitted": total_submitted,
-                "pending_po": pending_po,
-                "po_created": po_created,
-                "avg_cycle_days": round(avg_cycle_days, 1),
-                "pending_value": pending_value,
-                # optional placeholders (if template expects these)
-                "monthly_growth": 0,
-                "po_created_percentage": round((po_created / (po_created + total_submitted) * 100) if (po_created + total_submitted) > 0 else 0, 1),
-            }
-
-            # ACTION REQUIRED PRs (need PO) - LIMIT 20
-            action_pr = conn.execute("""
-                SELECT 
-                    p.id,
-                    p.pr_no,
-                    p.department,
-                    p.vendor_name,
-                    p.total_amount,
-                    p.status,
-                    p.created_at,
-                    CAST(julianday('now') - julianday(p.created_at) AS INTEGER) as days_pending,
-                    u.full_name as requester_name_full
-                FROM pr p
-                JOIN users u ON p.created_by = u.id
-                WHERE p.status IN ('SUBMITTED','BUDGET_EXCEPTION_PENDING')
-                AND p.id NOT IN (SELECT pr_id FROM po)
-                ORDER BY p.created_at ASC
-                LIMIT 20
-            """).fetchall()
-
-            # RECENT PO CREATED (recent activity) - LIMIT 10
-            recent_po = conn.execute("""
-                SELECT
-                    po.id as po_id,
-                    po.po_no,
-                    po.po_date,
-                    po.total_amount,
-                    po.created_at as po_created_at,
-                    pr.id as pr_id,
-                    pr.pr_no,
-                    pr.department,
-                    pr.vendor_name,
-                    u.full_name as requester_name,
-                    pu.full_name as po_creator_name
-                FROM po
-                JOIN pr ON po.pr_id = pr.id
-                JOIN users u ON pr.created_by = u.id
-                LEFT JOIN users pu ON po.created_by = pu.id
-                WHERE po.status='ACTIVE'
-                ORDER BY po.created_at DESC
-                LIMIT 10
-            """).fetchall()
-
-            # VENDORS for dropdown
-            vendors = conn.execute("""
-                SELECT id, vendor_name, vendor_code
-                FROM vendors
-                WHERE is_active=1
-                ORDER BY vendor_name
-                LIMIT 50
-            """).fetchall()
-
-            # CHART DATA - Monthly PR Submitted (Last 6 Months)
-            current_date = datetime.now()
-            current_year = current_date.year
-            current_month = current_date.month
-
-            monthly_labels = []
-            monthly_data = []
-            monthly_po_data = []
-
-            for i in range(5, -1, -1):
-                target_month = current_month - i
-                target_year = current_year
-                if target_month <= 0:
-                    target_month += 12
-                    target_year -= 1
-
-                month_key = f"{target_year:04d}-{target_month:02d}"
-                month_name = datetime(target_year, target_month, 1).strftime("%b")
-                monthly_labels.append(month_name)
-
-                # PR created that month
-                pr_count = conn.execute("""
-                    SELECT COUNT(*) as count
-                    FROM pr
-                    WHERE strftime('%Y-%m', created_at) = ?
-                """, (month_key,)).fetchone()
-                monthly_data.append(int(pr_count["count"] or 0))
-
-                # PO created that month
-                po_count = conn.execute("""
-                    SELECT COUNT(*) as count
-                    FROM po
-                    WHERE strftime('%Y-%m', created_at) = ?
-                    AND status='ACTIVE'
-                """, (month_key,)).fetchone()
-                monthly_po_data.append(int(po_count["count"] or 0))
-
-            # CHART DATA - Department Distribution (PR waiting PO)
-            dept_rows = conn.execute("""
-                SELECT department, COUNT(*) as count
-                FROM pr
-                WHERE status IN ('SUBMITTED','BUDGET_EXCEPTION_PENDING')
-                AND id NOT IN (SELECT pr_id FROM po)
-                GROUP BY department
-                ORDER BY count DESC
-                LIMIT 8
-            """).fetchall()
-
-            chart_data = {
-                "monthly_labels": monthly_labels,
-                "monthly_data": monthly_data,          # PR created
-                "monthly_po_data": monthly_po_data,    # PO created
-                "department_labels": [r["department"] for r in dept_rows],
-                "department_data": [int(r["count"]) for r in dept_rows],
-                "yearly_labels": [str(current_year - 3), str(current_year - 2), str(current_year - 1), str(current_year)],
-                "yearly_data": [0, 0, 0, total_submitted + po_created],
-            }
-
-            # Audit log (optional)
-            audit_log(
-                session.get("user_id"),
-                "VIEW_PROCUREMENT_DASHBOARD",
-                details={"kpi": kpi}
-            )
-
-            return render_template(
-                "procurement_dashboard.html",
-                kpi=kpi,
-                action_pr=action_pr,
-                recent_po=recent_po,
-                vendors=vendors,
-                chart_data=chart_data
-            )
-
-    except Exception as e:
-        print(f"⚠️ Procurement dashboard error: {e}")
-        flash("Error loading procurement dashboard", "danger")
-        return redirect("/dashboard")
-
-
-
-# ==================================================
 # APPLICATION STARTUP (RENDER / GUNICORN SAFE)
 # ==================================================
 with app.app_context():
@@ -2967,14 +2908,3 @@ def health_check():
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 5000))
     app.run(host="0.0.0.0", port=port)
-
-
-
-
-
-
-
-
-
-
-
