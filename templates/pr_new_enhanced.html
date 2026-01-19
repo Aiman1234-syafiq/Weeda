@@ -377,7 +377,8 @@
         </div>
     </div>
 
-    <form method="POST" action="/pr/new" id="prForm" enctype="multipart/form-data" onsubmit="return validateAndSubmitPRForm()">
+    <!-- ✅ FIXED: Normal form submit, bukan fetch() -->
+    <form method="POST" action="/pr/new" id="prForm" enctype="multipart/form-data" onsubmit="return validatePRForm()">
         <!-- Section 1: Basic Information -->
         <div class="form-section">
             <div class="section-title">
@@ -1029,7 +1030,6 @@
     let itemCounter = 0;
     let items = [];
     let currency = 'MYR';
-    let quotationFile = null;
     const allowedExtensions = {{ allowed_extensions|tojson }};
     const maxFileSize = 10 * 1024 * 1024; // 10MB
     
@@ -1392,8 +1392,6 @@
             return;
         }
         
-        quotationFile = file;
-        
         // Update preview
         document.getElementById('fileName').textContent = file.name;
         document.getElementById('fileSize').textContent = formatFileSize(file.size);
@@ -1427,8 +1425,8 @@
     
     // Remove uploaded file
     function removeFile() {
-        quotationFile = null;
-        document.getElementById('quotationFile').value = '';
+        const fileInput = document.getElementById('quotationFile');
+        fileInput.value = '';
         document.getElementById('filePreview').style.display = 'none';
         
         // Reset upload area
@@ -1558,7 +1556,7 @@
         }
     }
     
-    // Form validation
+    // ✅ FIXED: Form validation - normal submit, bukan fetch
     function validatePRForm() {
         // Validate items
         const total = updateTotal();
@@ -1584,13 +1582,28 @@
         }
         
         // Validate quotation file
-        if (!quotationFile) {
+        const fileInput = document.getElementById('quotationFile');
+        if (!fileInput.files.length) {
             alert('Quotation file is required. Please upload vendor quotation.');
             document.getElementById('uploadArea').scrollIntoView({ behavior: 'smooth' });
             document.getElementById('uploadArea').style.borderColor = 'var(--danger)';
             setTimeout(() => {
                 document.getElementById('uploadArea').style.borderColor = '';
             }, 2000);
+            return false;
+        }
+        
+        // Validate file type
+        const file = fileInput.files[0];
+        const fileExt = file.name.split('.').pop().toLowerCase();
+        if (!allowedExtensions.includes(fileExt)) {
+            alert(`Invalid file type. Allowed: ${allowedExtensions.join(', ')}`);
+            return false;
+        }
+        
+        // Validate file size
+        if (file.size > maxFileSize) {
+            alert('File size must be less than 10MB');
             return false;
         }
         
@@ -1601,81 +1614,17 @@
             return false;
         }
         
-        return true;
-    }
-    
-    // Form submission with print
-    function validateAndSubmitPRForm() {
-        if (!validatePRForm()) {
-            return false;
-        }
-        
         // Show loading overlay
         document.getElementById('loadingOverlay').style.display = 'flex';
         
-        // Submit form
-        const formData = new FormData(document.getElementById('prForm'));
+        // Prepare items data sebelum submit
+        updateItemsArray();
         
-        fetch('/pr/new', {
-            method: 'POST',
-            body: formData
-        })
-        .then(response => {
-            if (!response.ok) {
-                throw new Error('Network response was not ok');
-            }
-            return response.text();
-        })
-        .then(data => {
-            // Hide loading overlay
-            document.getElementById('loadingOverlay').style.display = 'none';
-            
-            // Try to parse as JSON
-            try {
-                const result = JSON.parse(data);
-                if (result.success) {
-                    // Update PR number in print format
-                    document.getElementById('print-pr-no').textContent = result.pr_no || 'PR-XXXX';
-                    
-                    // Auto print after a short delay
-                    setTimeout(() => {
-                        printExcelFormat();
-                    }, 500);
-                    
-                    // Redirect after printing
-                    setTimeout(() => {
-                        window.location.href = result.redirect_url || '/dashboard';
-                    }, 3000);
-                } else {
-                    alert('Error: ' + (result.message || 'Unknown error'));
-                }
-            } catch (e) {
-                // If not JSON, assume HTML response
-                console.log('Received HTML response, assuming success');
-                
-                // Generate a temporary PR number for print
-                const prNumber = 'PR-' + new Date().getTime().toString().slice(-6);
-                document.getElementById('print-pr-no').textContent = prNumber;
-                
-                // Auto print
-                setTimeout(() => {
-                    printExcelFormat();
-                }, 500);
-                
-                // Show success message
-                alert('PR submitted successfully! Printing form...');
-            }
-        })
-        .catch(error => {
-            console.error('Error:', error);
-            document.getElementById('loadingOverlay').style.display = 'none';
-            alert('Error submitting form. Please try again.');
-        });
-        
-        return false; // Prevent default form submission
+        // ✅ Return true untuk allow normal form submission
+        return true;
     }
     
-    // Function to print Excel format
+    // Function to print Excel format (untuk manual print)
     function printExcelFormat() {
         // Update print format with current data
         updatePrintFormat();
