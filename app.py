@@ -2181,28 +2181,38 @@ def procurement_vendor_form():
 @app.route("/api/search")
 @login_required
 def global_search():
-    """Global search endpoint for PRs and vendors"""
-    query = request.args.get("q", "")
-    
+    query = request.args.get("q", "").strip()
+    like = f"%{query}%"
+
     try:
         with db() as conn:
-            # Search PRs
             prs = conn.execute("""
-            SELECT pr_no, purpose, vendor_name, department, status
-            FROM pr 
-            WHERE (pr_no LIKE ? OR purpose LIKE ? OR vendor_name LIKE ?)
-            ORDER BY created_at DESC
-            LIMIT 10
-            """, (f"%{query}%", f"%{query}%", f"%{query}%")).fetchall()
-            
-            # Search vendors
-            vendors = conn.execute("""
-            SELECT vendor_code, vendor_name, vendor_type, contact_person
-            FROM vendors 
-            WHERE (vendor_code LIKE ? OR vendor_name LIKE ? OR contact_person LIKE ?)
-            AND is_active=1
-            LIMIT 10
-            """, (f"%{query}%", f"%{query}%", f"%{query}%")).fetchall()
+                SELECT pr_no, purpose, vendor_name, department, status
+                FROM pr
+                WHERE (pr_no LIKE ? OR purpose LIKE ? OR vendor_name LIKE ?)
+                ORDER BY created_at DESC
+                LIMIT 10
+            """, (like, like, like)).fetchall()
+
+            like = f"%{query}%"
+
+vendors = conn.execute("""
+SELECT vendor_code, vendor_name 
+FROM vendors 
+WHERE (vendor_code LIKE ? OR vendor_name LIKE ?) 
+AND is_active=1
+LIMIT 20
+""", (like, like)).fetchall()
+
+
+        return jsonify({
+            "prs": [dict(p) for p in prs],
+            "vendors": [dict(v) for v in vendors]
+        })
+    except Exception:
+        return jsonify({"prs": [], "vendors": []})
+
+
         
         return jsonify({
             "prs": [dict(p) for p in prs],
@@ -2274,7 +2284,10 @@ def search_po():
             )
             AND po.status='ACTIVE'
             LIMIT 20
-            """, (f"%{query}%", f"%{query}%", f"%{query}%")).fetchall()
+            like = f"%{query}%"
+
+""", (like, like, like)).fetchall()
+
         
         return jsonify([dict(p) for p in pos])
     except Exception as e:
