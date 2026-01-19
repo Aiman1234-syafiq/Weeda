@@ -22,12 +22,14 @@ from werkzeug.security import generate_password_hash, check_password_hash
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 DB_PATH = os.environ.get(
     "DB_PATH",
-    "/data/pr_enterprise.db"
+    os.path.join(BASE_DIR, "pr_enterprise.db")
 )
 
+
 # File upload config
-UPLOAD_FOLDER = "/data/uploads"
-QUOTATION_FOLDER = "/data/uploads/quotations"
+UPLOAD_FOLDER = os.path.join(BASE_DIR, "uploads")
+QUOTATION_FOLDER = os.path.join(UPLOAD_FOLDER, "quotations")
+
 ALLOWED_EXTENSIONS = {'pdf', 'jpg', 'jpeg', 'png', 'doc', 'docx'}
 MAX_FILE_SIZE = 10 * 1024 * 1024  # 10MB
 
