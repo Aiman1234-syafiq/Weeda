@@ -25,8 +25,7 @@ DB_PATH = os.environ.get(
     os.path.join(BASE_DIR, "pr_enterprise.db")
 )
 
-
-# File upload config
+# File upload config - WARNING: Render Free doesn't have persistent storage
 UPLOAD_FOLDER = os.path.join(BASE_DIR, "uploads")
 QUOTATION_FOLDER = os.path.join(UPLOAD_FOLDER, "quotations")
 
@@ -881,7 +880,7 @@ def dashboard():
         return redirect("/")
 
 # ==================================================
-# CREATE PR - DENGAN QUOTATION UPLOAD (FIXED)
+# CREATE PR - DENGAN QUOTATION UPLOAD (OPTIONAL) - FIXED ✅
 # ==================================================
 @app.route("/pr/new", methods=["GET", "POST"])
 @login_required
@@ -890,15 +889,7 @@ def pr_new():
     if request.method == "POST":
         try:
             # Check quotation file
-            if 'quotation' not in request.files:
-                flash("Quotation file is required", "danger")
-                return redirect("/pr/new")
-            
-            quotation_file = request.files['quotation']
-            
-            if quotation_file.filename == '':
-                flash("No quotation file selected", "danger")
-                return redirect("/pr/new")
+            quotation_file = request.files.get('quotation')
             
             # Parse form data
             department = request.form["department"]
@@ -977,31 +968,61 @@ def pr_new():
                 
                 pr_id = cursor.lastrowid
                 
-                # SIMPAN FILE QUOTATION SELEPAS DAPAT pr_id
-                try:
-                    quotation_filename = save_quotation_file(quotation_file, pr_id)
-                    
-                    if not quotation_filename:
-                        flash("Failed to save quotation file", "danger")
-                        # Rollback PR creation
-                        conn.execute("DELETE FROM pr WHERE id=?", (pr_id,))
-                        return redirect("/pr/new")
-                except ValueError as e:
-                    flash(str(e), "danger")
-                    conn.execute("DELETE FROM pr WHERE id=?", (pr_id,))
-                    return redirect("/pr/new")
+                # =========================
+                # HANDLE QUOTATION (OPTIONAL) - FIXED ✅
+                # =========================
+                quotation_filename = None
                 
-                # Update PR dengan quotation filename
-                conn.execute("""
-                UPDATE pr SET 
-                    quotation_filename=?,
-                    quotation_uploaded_at=?
-                WHERE id=?
-                """, (
-                    quotation_filename,
-                    datetime.now().isoformat(),
-                    pr_id
-                ))
+                if quotation_file and quotation_file.filename:
+                    try:
+                        # Save quotation file
+                        quotation_filename = save_quotation_file(quotation_file, pr_id)
+                        
+                        if quotation_filename:
+                            # Update PR with quotation info
+                            conn.execute("""
+                            UPDATE pr SET 
+                                quotation_filename=?,
+                                quotation_uploaded_at=?
+                            WHERE id=?
+                            """, (
+                                quotation_filename,
+                                datetime.now().isoformat(),
+                                pr_id
+                            ))
+                            
+                            # Insert quotation record
+                            quotation_path = os.path.join(QUOTATION_FOLDER, quotation_filename)
+                            if os.path.exists(quotation_path):
+                                conn.execute("""
+                                INSERT INTO pr_quotation (
+                                    pr_id, filename, file_path,
+                                    uploaded_by, uploaded_at,
+                                    file_size, mime_type
+                                ) VALUES (?, ?, ?, ?, ?, ?, ?)
+                                """, (
+                                    pr_id,
+                                    quotation_filename,
+                                    f"quotations/{quotation_filename}",
+                                    session["user_id"],
+                                    datetime.now().isoformat(),
+                                    os.path.getsize(quotation_path),
+                                    quotation_file.content_type
+                                ))
+                            else:
+                                print(f"⚠️ Quotation file not found at: {quotation_path}")
+                                quotation_filename = None
+                                
+                    except ValueError as e:
+                        # File validation error - don't fail PR creation
+                        print(f"⚠️ Quotation validation error: {e}")
+                        flash(f"Quotation upload skipped: {str(e)}", "warning")
+                        quotation_filename = None
+                    except Exception as e:
+                        # Any other error - don't fail PR creation
+                        print(f"⚠️ Quotation upload error: {e}")
+                        flash("Quotation upload skipped due to error", "warning")
+                        quotation_filename = None
                 
                 # Insert PR items
                 for idx, item in enumerate(items, 1):
@@ -1019,23 +1040,6 @@ def pr_new():
                         item.get('notes')
                     ))
                 
-                # Save quotation record dengan relative path
-                conn.execute("""
-                INSERT INTO pr_quotation (
-                    pr_id, filename, file_path,
-                    uploaded_by, uploaded_at,
-                    file_size, mime_type
-                ) VALUES (?, ?, ?, ?, ?, ?, ?)
-                """, (
-                    pr_id,
-                    quotation_filename,
-                    f"quotations/{quotation_filename}",  # Relative path
-                    session["user_id"],
-                    datetime.now().isoformat(),
-                    os.path.getsize(os.path.join(QUOTATION_FOLDER, quotation_filename)),
-                    quotation_file.content_type
-                ))
-                
                 # Update budget if within budget
                 if budget_check and budget_check['available'] and budget_category:
                     conn.execute("""
@@ -1045,7 +1049,11 @@ def pr_new():
                     """, (total_amount, department, budget_category, fiscal_year))
                 
                 # Log action
-                log_action(pr_id, "PR_CREATED", "PR created with quotation")
+                log_action(
+                    pr_id, 
+                    "PR_CREATED", 
+                    f"PR created {'with quotation' if quotation_filename else 'without quotation'}"
+                )
                 
                 # Audit log
                 audit_log(
@@ -1056,8 +1064,7 @@ def pr_new():
                     {
                         "pr_no": pr_no,
                         "total_amount": total_amount,
-                        "has_quotation": True,
-                        "quotation_file": quotation_filename
+                        "has_quotation": bool(quotation_filename)
                     }
                 )
                 
@@ -1065,12 +1072,15 @@ def pr_new():
                 create_notification(
                     session["user_id"],
                     "PR Created",
-                    f"PR {pr_no} has been created successfully with quotation.",
+                    f"PR {pr_no} has been created successfully.",
                     "SUCCESS",
                     pr_id
                 )
             
-            flash(f"PR {pr_no} created and submitted successfully with quotation!", "success")
+            if quotation_filename:
+                flash(f"PR {pr_no} created successfully with quotation!", "success")
+            else:
+                flash(f"PR {pr_no} created successfully! (No quotation uploaded)", "success")
             
             if initial_status == "BUDGET_EXCEPTION_PENDING":
                 flash("This PR requires budget exception approval.", "warning")
@@ -1644,7 +1654,7 @@ def create_po(pr_id):
                 flash("PR tidak ditemukan atau belum dalam status SUBMITTED/BUDGET_EXCEPTION_PENDING", "danger")
                 return redirect("/procurement/dashboard")
             
-            # Check if PR has quotation - ENFORCE RULE
+            # ENFORCE: PR mesti ada quotation sebelum boleh create PO ✅
             if not pr['quotation_filename']:
                 flash(f"Cannot create PO. PR {pr['pr_no']} must have quotation file.", "danger")
                 return redirect("/procurement/dashboard")
