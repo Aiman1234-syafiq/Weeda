@@ -957,40 +957,24 @@
                     </li>
                     {% endif %}
                     
-                    {% if session.role in ['approver1', 'approver2', 'approver3', 'approver4'] %}
-                    <li class="nav-item">
-                        <a href="/approve" class="nav-link {% if request.path == '/approve' %}active{% endif %}">
-                            <i class="fas fa-check-circle"></i>
-                            <span>Approvals</span>
-                            {% if stats and stats.pending_approvals %}
-                            <span class="nav-badge">{{ stats.pending_approvals }}</span>
-                            {% endif %}
-                        </a>
-                    </li>
-                    <li class="nav-item">
-                        <a href="/reports" class="nav-link {% if request.path.startswith('/reports') %}active{% endif %}">
-                            <i class="fas fa-chart-bar"></i>
-                            <span>Reports</span>
-                        </a>
-                    </li>
-                    {% endif %}
+                    <!-- REMOVED: Approver section - not used in backend -->
                     
                     {% if session.role in ['procurement', 'superadmin'] %}
                     <li class="nav-item">
-                        <a href="/procurement/dashboard"
-                           class="nav-link {% if request.path == '/procurement/dashboard' %}active{% endif %}">
+                        <a href="/procurement"
+                           class="nav-link {% if request.path == '/procurement' %}active{% endif %}">
                             <i class="fas fa-chart-pie"></i>
                             <span>Procurement Dashboard</span>
                         </a>
                     </li>
 
                     <li class="nav-item">
-                        <a href="/procurement"
-                           class="nav-link {% if request.path == '/procurement' %}active{% endif %}">
+                        <a href="/procurement/po/list"
+                           class="nav-link {% if request.path == '/procurement/po/list' %}active{% endif %}">
                             <i class="fas fa-clipboard-list"></i>
-                            <span>Approved PR</span>
-                            {% if stats and stats.pending_receipt %}
-                            <span class="nav-badge">{{ stats.pending_receipt }}</span>
+                            <span>PO Management</span>
+                            {% if stats and stats.pending_po %}
+                            <span class="nav-badge">{{ stats.pending_po }}</span>
                             {% endif %}
                         </a>
                     </li>
@@ -1021,9 +1005,12 @@
                         </a>
                     </li>
                     <li class="nav-item">
-                        <a href="/reports" class="nav-link {% if request.path.startswith('/reports') %}active{% endif %}">
-                            <i class="fas fa-chart-line"></i>
-                            <span>Analytics</span>
+                        <a href="/budget-exceptions" class="nav-link {% if request.path.startswith('/pr/') and 'budget-exception' in request.path %}active{% endif %}">
+                            <i class="fas fa-exclamation-triangle"></i>
+                            <span>Budget Exceptions</span>
+                            {% if stats and stats.pending_budget_exceptions %}
+                            <span class="nav-badge">{{ stats.pending_budget_exceptions }}</span>
+                            {% endif %}
                         </a>
                     </li>
                     {% endif %}
@@ -1054,10 +1041,10 @@
             <div class="sidebar-footer">
                 <div class="system-info">
                     <small class="text-muted" style="display: block; margin-bottom: 0.5rem;">
-                        <i class="fas fa-user-circle"></i> {{ session.name }}
+                        <i class="fas fa-user-circle"></i> {{ session.name|default('User') }}
                     </small>
                     <small class="text-muted" style="display: block;">
-                        <i class="fas fa-briefcase"></i> {{ session.role|title }}
+                        <i class="fas fa-briefcase"></i> {{ session.role|title|default('User') }}
                     </small>
                 </div>
                 <div class="version-info">
@@ -1076,7 +1063,7 @@
                     </button>
                     <div class="search-box">
                         <i class="fas fa-search"></i>
-                        <input type="text" placeholder="Search PRs, vendors..." id="global-search">
+                        <input type="text" placeholder="Search PRs, vendors..." id="global-search" onkeyup="handleGlobalSearch(event)">
                     </div>
                 </div>
                 
@@ -1085,8 +1072,8 @@
                         {{ session.name[0] if session.name else 'U' }}
                     </div>
                     <div class="user-info">
-                        <div class="user-name">{{ session.name }}</div>
-                        <div class="user-role">{{ session.role|title }}</div>
+                        <div class="user-name">{{ session.name|default('User') }}</div>
+                        <div class="user-role">{{ session.role|title|default('User') }}</div>
                     </div>
                     <i class="fas fa-chevron-down"></i>
                 </div>
@@ -1129,13 +1116,8 @@
                     <div class="avatar" style="width: 80px; height: 80px; font-size: 2rem; margin: 0 auto 1rem;">
                         {{ session.name[0] if session.name else 'U' }}
                     </div>
-                    <h4>{{ session.name }}</h4>
-                    <p class="text-muted">{{ session.role|title }} • {{ session.department|default('N/A') }}</p>
-                </div>
-                
-                <div class="form-group">
-                    <label class="form-label">Email</label>
-                    <div class="text-muted">{{ session.email|default('Not provided') }}</div>
+                    <h4>{{ session.name|default('User') }}</h4>
+                    <p class="text-muted">{{ session.role|title|default('User') }} • {{ session.department|default('N/A') }}</p>
                 </div>
                 
                 <div class="form-group">
@@ -1144,17 +1126,29 @@
                 </div>
                 
                 <div class="form-group">
-                    <label class="form-label">Last Login</label>
-                    <div class="text-muted">
-                        {% if session.last_login %}
-                            {{ session.last_login|format_datetime }}
+                    <label class="form-label">Role</label>
+                    <div>{{ session.role|title|default('User') }}</div>
+                </div>
+                
+                <div class="form-group">
+                    <label class="form-label">Account Type</label>
+                    <div>
+                        {% if session.role == 'superadmin' %}
+                            <span class="status-badge status-completed">Super Administrator</span>
+                        {% elif session.role == 'procurement' %}
+                            <span class="status-badge status-procurement">Procurement Officer</span>
+                        {% elif session.role == 'user' %}
+                            <span class="status-badge status-approved">Regular User</span>
                         {% else %}
-                            Recently active
+                            <span class="status-badge status-draft">User</span>
                         {% endif %}
                     </div>
                 </div>
             </div>
             <div class="modal-footer">
+                <button class="btn btn-outline" onclick="closeModal('profile-modal')">
+                    <i class="fas fa-times"></i> Close
+                </button>
                 <a href="/logout" class="btn btn-danger">
                     <i class="fas fa-sign-out-alt"></i> Logout
                 </a>
@@ -1216,28 +1210,23 @@
             });
         }, 5000);
         
-        // Global search
-        document.getElementById('global-search').addEventListener('keyup', async function(e) {
-            if (e.key === 'Enter' && this.value.trim()) {
-                const query = this.value.trim();
-                try {
-                    const response = await fetch(`/api/search?q=${encodeURIComponent(query)}`);
-                    const results = await response.json();
-                    
-                    // Show search results (simplified)
-                    if (results.prs && results.prs.length > 0) {
-                        alert(`Found ${results.prs.length} PRs matching "${query}"`);
-                    } else if (results.vendors && results.vendors.length > 0) {
-                        alert(`Found ${results.vendors.length} vendors matching "${query}"`);
-                    } else {
-                        alert('No results found');
-                    }
-                } catch (error) {
-                    console.error('Search error:', error);
-                    alert('Search temporarily unavailable');
-                }
+        // Global search handler
+        function handleGlobalSearch(e) {
+            if (e.key === 'Enter') {
+                const query = e.target.value.trim();
+                if (!query) return;
+                
+                // Show loading
+                showToast(`Searching for "${query}"...`, 'info');
+                
+                // Redirect to appropriate page based on query
+                setTimeout(() => {
+                    // For now, just show a message
+                    showToast(`Search feature coming soon. Try navigating through the menu.`, 'warning');
+                    e.target.value = '';
+                }, 500);
             }
-        });
+        }
         
         // Form validation helper
         function validateForm(formId) {
@@ -1320,13 +1309,14 @@
             const titles = {
                 '/dashboard': 'Dashboard',
                 '/pr/new': 'Create PR',
-                '/approve': 'Approvals',
-                '/procurement/dashboard': 'Procurement Dashboard',
-                '/procurement': 'Approved PR',
+                '/procurement': 'Procurement Dashboard',
+                '/procurement/po/list': 'PO Management',
+                '/procurement/po/new': 'Create PO',
                 '/procurement/vendor/new': 'Register New Vendor',
                 '/vendors': 'Vendor Database',
-                '/reports': 'Reports',
-                '/admin/users': 'User Management'
+                '/admin/users': 'User Management',
+                '/notifications': 'Notifications',
+                '/logout': 'Logout'
             };
             
             for (const [route, title] of Object.entries(titles)) {
