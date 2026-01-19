@@ -4,6 +4,7 @@
 
 {% block extra_css %}
 <style>
+    /* Form Styles */
     .form-section {
         background: white;
         border-radius: var(--border-radius);
@@ -173,369 +174,864 @@
         color: var(--primary-700);
     }
     
-    .vendor-card {
-        background: var(--gray-50);
-        padding: 1rem;
+    /* Quotation Upload Styles */
+    .file-upload-area {
+        border: 2px dashed var(--primary-300);
         border-radius: 8px;
-        border: 1px solid var(--gray-200);
+        padding: 2rem;
+        text-align: center;
+        background: var(--primary-50);
         cursor: pointer;
         transition: var(--transition);
+        margin: 1rem 0;
     }
     
-    .vendor-card:hover {
-        background: var(--primary-50);
-        border-color: var(--primary-300);
-    }
-    
-    .vendor-card.selected {
+    .file-upload-area:hover {
         background: var(--primary-100);
         border-color: var(--primary-500);
+    }
+    
+    .file-upload-area.dragover {
+        background: var(--primary-200);
+        border-color: var(--primary-600);
+        transform: scale(1.02);
+    }
+    
+    .file-upload-area i {
+        font-size: 3rem;
+        color: var(--primary-500);
+        margin-bottom: 1rem;
+    }
+    
+    .file-preview {
+        background: var(--gray-50);
+        border: 1px solid var(--gray-300);
+        border-radius: 8px;
+        padding: 1rem;
+        margin-top: 1rem;
+        display: flex;
+        align-items: center;
+        gap: 1rem;
+    }
+    
+    .file-icon {
+        font-size: 2rem;
+        color: var(--danger);
+    }
+    
+    .file-info {
+        flex: 1;
+    }
+    
+    .file-name {
+        font-weight: 600;
+        margin-bottom: 0.25rem;
+    }
+    
+    .file-size {
+        font-size: 0.875rem;
+        color: var(--gray-600);
+    }
+    
+    .quotation-alert {
+        background: linear-gradient(135deg, #fef3c7, #fde68a);
+        border: 1px solid #fbbf24;
+        border-left: 4px solid #d97706;
+    }
+    
+    /* PRINT FORMAT EXCEL-LIKE */
+    @media print {
+        body * {
+            visibility: hidden;
+        }
+        
+        .print-excel-format, .print-excel-format * {
+            visibility: visible;
+        }
+        
+        .print-excel-format {
+            position: absolute;
+            left: 0;
+            top: 0;
+            width: 100%;
+            margin: 0;
+            padding: 10px;
+            background: white;
+            font-family: Arial, sans-serif;
+        }
+        
+        /* Hide semua yang bukan print section */
+        .no-print, .page-header, .action-buttons, .btn, nav, footer, 
+        .form-section, form, .print-hide, .pr-form-content {
+            display: none !important;
+        }
+        
+        /* Excel table styling */
+        .excel-table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 11pt;
+            margin-bottom: 5px;
+        }
+        
+        .excel-table th {
+            background-color: #f2f2f2;
+            border: 1px solid #000;
+            padding: 5px;
+            text-align: center;
+            font-weight: bold;
+            height: 30px;
+        }
+        
+        .excel-table td {
+            border: 1px solid #000;
+            padding: 5px;
+            vertical-align: top;
+            height: 30px;
+        }
+        
+        .excel-table .header-row {
+            background-color: #d9e1f2;
+            font-weight: bold;
+            font-size: 14pt;
+            text-align: center;
+            height: 40px;
+        }
+        
+        .excel-table .company-info {
+            background-color: #e6f0ff;
+            font-weight: bold;
+        }
+        
+        .excel-table .section-header {
+            background-color: #f2f2f2;
+            font-weight: bold;
+        }
+        
+        .excel-table .total-row {
+            background-color: #fff2cc;
+            font-weight: bold;
+        }
+        
+        .excel-table .signature-cell {
+            height: 70px;
+            vertical-align: bottom;
+        }
+        
+        .print-title {
+            font-size: 16pt;
+            font-weight: bold;
+            text-align: center;
+            margin: 10px 0;
+        }
+        
+        .page-break {
+            page-break-after: always;
+        }
+    }
+    
+    /* Hide print format in normal view */
+    .print-excel-format {
+        display: none;
+    }
+    
+    /* Loading overlay */
+    .loading-overlay {
+        display: none;
+        position: fixed;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+        background: rgba(0,0,0,0.5);
+        z-index: 9999;
+        justify-content: center;
+        align-items: center;
+    }
+    
+    .loading-spinner {
+        background: white;
+        padding: 2rem;
+        border-radius: 10px;
+        text-align: center;
     }
 </style>
 {% endblock %}
 
 {% block content %}
-<div class="page-header">
-    <div>
-        <h1 class="page-title">
-            <i class="fas fa-file-contract" style="color: var(--primary-600);"></i>
-            Create New Purchase Requisition
-        </h1>
-        <p class="page-subtitle">
-            Complete all sections below to create a new PR. Fields marked with * are required.
-        </p>
+<div class="pr-form-content">
+    <div class="page-header">
+        <div>
+            <h1 class="page-title">
+                <i class="fas fa-file-contract" style="color: var(--primary-600);"></i>
+                Create New Purchase Requisition
+            </h1>
+            <p class="page-subtitle">
+                Complete all sections below to create a new PR. <strong class="text-danger">Quotation file is required.</strong>
+            </p>
+        </div>
+        <div class="action-buttons">
+            <a href="/dashboard" class="btn btn-secondary">
+                <i class="fas fa-arrow-left"></i> Cancel
+            </a>
+        </div>
     </div>
-    <div class="action-buttons">
-        <a href="/dashboard" class="btn btn-secondary">
-            <i class="fas fa-arrow-left"></i> Cancel
-        </a>
+
+    <form method="POST" action="/pr/new" id="prForm" enctype="multipart/form-data" onsubmit="return validateAndSubmitPRForm()">
+        <!-- Section 1: Basic Information -->
+        <div class="form-section">
+            <div class="section-title">
+                <i class="fas fa-info-circle"></i>
+                1. Basic Information
+            </div>
+            
+            <div class="form-row">
+                <div class="form-group">
+                    <label for="requester_name" class="form-label">
+                        Requester Name *
+                    </label>
+                    <input type="text" class="form-control" id="requester_name" 
+                           name="requester_name" value="{{ session.name }}" required readonly>
+                </div>
+                
+                <div class="form-group">
+                    <label for="department" class="form-label">
+                        Department *
+                    </label>
+                    <select class="form-control" id="department" name="department" required>
+                        <option value="">Select Department</option>
+                        {% for dept in departments %}
+                        <option value="{{ dept }}" {% if dept == session.department %}selected{% endif %}>
+                            {{ dept }}
+                        </option>
+                        {% endfor %}
+                    </select>
+                </div>
+                
+                <div class="form-group">
+                    <label for="fiscal_year" class="form-label">
+                        Fiscal Year *
+                    </label>
+                    <select class="form-control" id="fiscal_year" name="fiscal_year" required>
+                        {% set current_year = datetime.now().year %}
+                        <option value="{{ current_year }}">{{ current_year }}</option>
+                        <option value="{{ current_year + 1 }}">{{ current_year + 1 }}</option>
+                    </select>
+                </div>
+            </div>
+            
+            <div class="form-group">
+                <label for="purpose" class="form-label">
+                    Purpose / Description *
+                    <span class="text-muted" style="font-weight: normal;">(What you need and why)</span>
+                </label>
+                <textarea class="form-control" id="purpose" name="purpose" 
+                          rows="3" required placeholder="Describe what you need to purchase and why it's needed..."></textarea>
+                <div class="form-text">Be specific about the business need and expected benefits.</div>
+            </div>
+            
+            <div class="form-row">
+                <div class="form-group">
+                    <label for="priority" class="form-label">
+                        Priority Level
+                    </label>
+                    <select class="form-control" id="priority" name="priority">
+                        <option value="LOW">Low</option>
+                        <option value="NORMAL" selected>Normal</option>
+                        <option value="HIGH">High</option>
+                        <option value="URGENT">Urgent</option>
+                    </select>
+                </div>
+                
+                <div class="form-group">
+                    <label for="budget_category" class="form-label">
+                        Budget Category
+                    </label>
+                    <select class="form-control" id="budget_category" name="budget_category">
+                        <option value="">Select Budget Category</option>
+                        {% for category in budget_categories %}
+                        <option value="{{ category }}">{{ category }}</option>
+                        {% endfor %}
+                    </select>
+                    <div class="form-text">Select the budget category for this purchase</div>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Section 2: Budget Check (Dynamic) -->
+        <div class="form-section" id="budgetSection" style="display: none;">
+            <div class="section-title">
+                <i class="fas fa-coins"></i>
+                2. Budget Availability Check
+            </div>
+            
+            <div id="budgetResult">
+                <div class="budget-info">
+                    <div style="display: flex; align-items: center; gap: 1rem; margin-bottom: 0.5rem;">
+                        <i class="fas fa-sync-alt fa-spin"></i>
+                        <span>Checking budget availability...</span>
+                    </div>
+                </div>
+            </div>
+            
+            <div id="budgetWarning" class="budget-warning" style="display: none;">
+                <div style="display: flex; align-items: flex-start; gap: 1rem;">
+                    <i class="fas fa-exclamation-triangle" style="color: var(--warning); font-size: 1.5rem;"></i>
+                    <div>
+                        <strong>Budget Exception Required</strong>
+                        <p style="margin: 0.5rem 0;">This purchase exceeds the available budget. You'll need budget exception approval before submission.</p>
+                        <small class="text-muted">Total amount exceeds remaining budget for selected category.</small>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Section 3: Component List -->
+        <div class="form-section">
+            <div class="section-title">
+                <i class="fas fa-list-alt"></i>
+                3. Component List
+                <span class="text-muted" style="font-weight: normal; font-size: 0.875rem; margin-left: auto;">
+                    Add all items to be purchased
+                </span>
+            </div>
+            
+            <div class="table-responsive">
+                <table class="items-table" id="itemsTable">
+                    <thead>
+                        <tr>
+                            <th style="width: 5%;">#</th>
+                            <th style="width: 30%;">Item Description *</th>
+                            <th style="width: 10%;">Qty *</th>
+                            <th style="width: 15%;">Unit Price *</th>
+                            <th style="width: 15%;">Total Price</th>
+                            <th style="width: 15%;">Catalog #</th>
+                            <th style="width: 5%;"></th>
+                        </tr>
+                    </thead>
+                    <tbody id="itemsBody">
+                        <!-- Items will be added here dynamically -->
+                    </tbody>
+                </table>
+            </div>
+            
+            <div class="text-center mt-2">
+                <button type="button" class="btn btn-outline" onclick="addNewItem()">
+                    <i class="fas fa-plus"></i> Add Item
+                </button>
+            </div>
+            
+            <div class="total-summary" id="totalSummary" style="display: none;">
+                <div style="display: flex; justify-content: space-between; align-items: center;">
+                    <div>
+                        <div style="font-size: 0.875rem; opacity: 0.9;">Total Amount</div>
+                        <div class="total-amount" id="totalAmount">RM 0.00</div>
+                        <div style="font-size: 0.875rem; opacity: 0.9;">
+                            <span id="itemCount">0</span> items
+                        </div>
+                    </div>
+                    <div class="currency-selector">
+                        <button type="button" class="currency-btn active" data-currency="MYR">MYR</button>
+                        <button type="button" class="currency-btn" data-currency="USD">USD</button>
+                        <button type="button" class="currency-btn" data-currency="SGD">SGD</button>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Hidden field for items JSON -->
+            <input type="hidden" name="items" id="itemsJson" value="[]">
+        </div>
+        
+        <!-- Section 4: Vendor & Payment Information -->
+        <div class="form-section">
+            <div class="section-title">
+                <i class="fas fa-building"></i>
+                4. Vendor & Payment Information
+            </div>
+            
+            <div class="form-row">
+                <div class="form-group">
+                    <label for="vendor_name" class="form-label">
+                        Vendor Name *
+                    </label>
+                    <select class="form-control" id="vendor_name" name="vendor_name" required>
+                        <option value="">Select Vendor</option>
+                        {% for vendor in vendors %}
+                        <option value="{{ vendor.vendor_name }}" data-code="{{ vendor.vendor_code }}">
+                            {{ vendor.vendor_name }} ({{ vendor.vendor_code }})
+                        </option>
+                        {% endfor %}
+                        <option value="other">+ Add New Vendor</option>
+                    </select>
+                </div>
+                
+                <div class="form-group">
+                    <label for="vendor_code" class="form-label">
+                        Vendor Code
+                    </label>
+                    <input type="text" class="form-control" id="vendor_code" 
+                           name="vendor_code" placeholder="Vendor code or registration number">
+                </div>
+            </div>
+            
+            <div class="form-group">
+                <label for="vendor_contact" class="form-label">
+                    Vendor Contact Information
+                </label>
+                <input type="text" class="form-control" id="vendor_contact" 
+                       name="vendor_contact" placeholder="Contact person, email, phone">
+            </div>
+            
+            <div class="form-row">
+                <div class="form-group">
+                    <label for="delivery_address" class="form-label">
+                        Delivery Address
+                    </label>
+                    <textarea class="form-control" id="delivery_address" name="delivery_address" 
+                              rows="2" placeholder="Where should items be delivered?"></textarea>
+                </div>
+                
+                <div class="form-group">
+                    <label for="payment_terms" class="form-label">
+                        Payment Terms
+                    </label>
+                    <select class="form-control" id="payment_terms" name="payment_terms">
+                        <option value="">Select Payment Terms</option>
+                        <option value="NET15">NET 15</option>
+                        <option value="NET30" selected>NET 30</option>
+                        <option value="NET45">NET 45</option>
+                        <option value="NET60">NET 60</option>
+                        <option value="UPON_DELIVERY">Upon Delivery</option>
+                        <option value="ADVANCE_50">50% Advance, 50% Upon Delivery</option>
+                    </select>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Section 5: Financial Details -->
+        <div class="form-section">
+            <div class="section-title">
+                <i class="fas fa-calculator"></i>
+                5. Financial Details
+            </div>
+            
+            <div class="form-row">
+                <div class="form-group">
+                    <label for="currency" class="form-label">
+                        Currency *
+                    </label>
+                    <select class="form-control" id="currency" name="currency" required>
+                        <option value="MYR" selected>Malaysian Ringgit (MYR)</option>
+                        <option value="USD">US Dollar (USD)</option>
+                        <option value="SGD">Singapore Dollar (SGD)</option>
+                        <option value="EUR">Euro (EUR)</option>
+                    </select>
+                </div>
+                
+                <div class="form-group">
+                    <label for="tax_amount" class="form-label">
+                        Tax Amount (if applicable)
+                    </label>
+                    <input type="number" class="form-control" id="tax_amount" 
+                           name="tax_amount" step="0.01" min="0" value="0">
+                    <div class="form-text">Enter tax amount separately if not included in item prices</div>
+                </div>
+            </div>
+            
+            <div class="form-group">
+                <div class="budget-info">
+                    <div style="display: flex; justify-content: space-between; align-items: center;">
+                        <div>
+                            <strong>Approval Path Based on Total Amount</strong>
+                            <p style="margin: 0.5rem 0 0; font-size: 0.875rem;">
+                                Based on the flowchart: ≤ RM10,000 (Approver 1) • RM11,000-49,999 (Approver 2 → 3) • ≥ RM50,000 (Approver 4)
+                            </p>
+                        </div>
+                        <div style="text-align: right;">
+                            <div style="font-size: 0.875rem;">Estimated Approval Path</div>
+                            <div style="font-size: 1.25rem; font-weight: 600;" id="approvalPathText">-</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Section 6: QUOTATION UPLOAD -->
+        <div class="form-section">
+            <div class="section-title">
+                <i class="fas fa-file-upload"></i>
+                6. Quotation Upload
+                <span class="text-danger" style="font-weight: 600; margin-left: auto;">REQUIRED</span>
+            </div>
+            
+            <div class="alert quotation-alert">
+                <div style="display: flex; align-items: flex-start; gap: 1rem;">
+                    <i class="fas fa-exclamation-circle" style="color: #d97706; font-size: 1.5rem;"></i>
+                    <div>
+                        <strong>Important: Quotation Required for PO Creation</strong>
+                        <p style="margin: 0.5rem 0;">Procurement cannot create Purchase Order without quotation file. Please upload vendor quotation.</p>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Hidden file input -->
+            <input type="file" id="quotationFile" name="quotation" accept=".pdf,.jpg,.jpeg,.png,.doc,.docx" 
+                   style="display: none;" required>
+            
+            <!-- Upload Area -->
+            <div class="file-upload-area" id="uploadArea" onclick="document.getElementById('quotationFile').click()">
+                <i class="fas fa-cloud-upload-alt"></i>
+                <h4 style="margin-bottom: 0.5rem;">Click to upload quotation file</h4>
+                <p style="color: var(--gray-600); margin-bottom: 0.5rem;">or drag and drop file here</p>
+                <p style="font-size: 0.875rem; color: var(--gray-500);">
+                    Supported formats: PDF, JPG, PNG, DOC, DOCX (Max: 10MB)
+                </p>
+            </div>
+            
+            <!-- File Preview -->
+            <div id="filePreview" style="display: none;">
+                <div class="file-preview">
+                    <div class="file-icon">
+                        <i class="fas fa-file-pdf"></i>
+                    </div>
+                    <div class="file-info">
+                        <div class="file-name" id="fileName">quotation.pdf</div>
+                        <div class="file-size" id="fileSize">2.5 MB</div>
+                    </div>
+                    <div>
+                        <button type="button" class="btn btn-outline-danger btn-sm" onclick="removeFile()">
+                            <i class="fas fa-trash"></i> Remove
+                        </button>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Quotation Details -->
+            <div class="form-row" style="margin-top: 1.5rem;">
+                <div class="form-group">
+                    <label for="quotation_date" class="form-label">
+                        Quotation Date
+                    </label>
+                    <input type="date" class="form-control" id="quotation_date" name="quotation_date" 
+                           value="{{ datetime.now().strftime('%Y-%m-%d') }}">
+                </div>
+                
+                <div class="form-group">
+                    <label for="quotation_ref" class="form-label">
+                        Quotation Reference #
+                    </label>
+                    <input type="text" class="form-control" id="quotation_ref" name="quotation_ref" 
+                           placeholder="Vendor's quotation number">
+                </div>
+                
+                <div class="form-group">
+                    <label for="quotation_validity" class="form-label">
+                        Quotation Validity (Days)
+                    </label>
+                    <select class="form-control" id="quotation_validity" name="quotation_validity">
+                        <option value="30">30 days</option>
+                        <option value="60" selected>60 days</option>
+                        <option value="90">90 days</option>
+                        <option value="120">120 days</option>
+                    </select>
+                </div>
+            </div>
+            
+            <div class="form-group">
+                <label for="quotation_notes" class="form-label">
+                    Quotation Notes
+                </label>
+                <textarea class="form-control" id="quotation_notes" name="quotation_notes" 
+                          rows="2" placeholder="Any additional notes about the quotation..."></textarea>
+            </div>
+        </div>
+        
+        <!-- Section 7: Approval Path Visualization -->
+        <div class="form-section">
+            <div class="section-title">
+                <i class="fas fa-project-diagram"></i>
+                7. Approval Process
+            </div>
+            
+            <div class="approval-path" id="approvalVisualization">
+                <!-- Dynamic approval path will be inserted here -->
+            </div>
+            
+            <div style="text-align: center; margin-top: 2rem;">
+                <div style="background: var(--gray-100); padding: 1rem; border-radius: 8px; display: inline-block;">
+                    <i class="fas fa-info-circle" style="color: var(--primary-600); margin-right: 0.5rem;"></i>
+                    <span>This PR will follow the approval path shown above based on total amount and budget status.</span>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Form Actions -->
+        <div class="card" style="background: var(--gray-50);">
+            <div style="padding: 1.5rem; display: flex; justify-content: space-between; align-items: center;">
+                <div>
+                    <strong>Ready to Submit?</strong>
+                    <p style="margin: 0.5rem 0 0; font-size: 0.875rem; color: var(--gray-600);">
+                        <i class="fas fa-exclamation-circle text-danger"></i>
+                        <strong class="text-danger">Quotation file is required for submission.</strong>
+                    </p>
+                </div>
+                <div class="action-buttons">
+                    <button type="submit" class="btn btn-primary btn-lg">
+                        <i class="fas fa-paper-plane"></i> Submit PR with Quotation
+                    </button>
+                </div>
+            </div>
+        </div>
+    </form>
+</div>
+
+<!-- PRINT SECTION (Excel Format) - Hidden in normal view -->
+<div class="print-excel-format" id="excelPrintFormat">
+    <div style="padding: 10px;">
+        <!-- Header -->
+        <table class="excel-table">
+            <tr class="header-row">
+                <td colspan="19" style="font-size: 14pt; padding: 10px;">
+                    <div style="text-align: center;">
+                        GROUP PROCUREMENT<br>
+                        <strong>PURCHASE REQUISITION FORM</strong>
+                    </div>
+                </td>
+            </tr>
+            <tr>
+                <td colspan="19" style="text-align: right; padding: 5px; font-size: 9pt;">
+                    DOC NO: PR/FORM/VFG/001 &nbsp;&nbsp; REVISION: 1 &nbsp;&nbsp; PAGE 1/1
+                </td>
+            </tr>
+        </table>
+        
+        <!-- Company Information -->
+        <table class="excel-table">
+            <tr class="company-info">
+                <td colspan="19">
+                    Company: VFIVE GROUP SDN BHD
+                    <span style="float: right;">
+                        Division: <span id="print-division"></span>
+                    </span>
+                </td>
+            </tr>
+            <tr>
+                <td colspan="19">
+                    Date Requested: <span id="print-date">{{ datetime.now().strftime('%d/%m/%Y') }}</span>
+                    <span style="float: right;">
+                        Purchase Request No: <span id="print-pr-no">PR-{{ "%04d" | format(range(1000, 9999) | random) }}</span>
+                    </span>
+                </td>
+            </tr>
+            <tr>
+                <td colspan="19">
+                    Requestor: <span id="print-requester">{{ session.name }}</span>
+                    <span style="float: right;">
+                        Currency: <span id="print-currency">MYR</span>
+                    </span>
+                </td>
+            </tr>
+        </table>
+        
+        <!-- Purchase Details -->
+        <table class="excel-table" style="margin-top: 10px;">
+            <tr class="section-header">
+                <td colspan="19">Purchase Details</td>
+            </tr>
+            <tr>
+                <td colspan="12">
+                    Included in Fiscal Year Budget:
+                    <br>
+                    <span style="margin-left: 20px;">
+                        <span id="print-budget-yes">☐</span> YES &nbsp;&nbsp;
+                        <span id="print-budget-no">☐</span> NO
+                    </span>
+                </td>
+                <td colspan="7" style="text-align: right; font-weight: bold;">
+                    Total Amount: <span id="print-total-amount">RM 0.00</span>
+                </td>
+            </tr>
+            <tr>
+                <td colspan="19">
+                    Purpose of Purchase: 
+                    <br>
+                    <span style="margin-left: 20px;">
+                        <span id="print-purpose-new">☐</span> New Order &nbsp;
+                        <span id="print-purpose-assets">☐</span> Assets &nbsp;
+                        <span id="print-purpose-project">☐</span> Project &nbsp;
+                        <span id="print-purpose-other">☐</span> Others: <span id="print-purpose-other-text"></span>
+                    </span>
+                    <span style="float: right; margin-right: 20px;">
+                        Priority: 
+                        <span id="print-priority-high">☐</span> High &nbsp;
+                        <span id="print-priority-medium">☐</span> Medium &nbsp;
+                        <span id="print-priority-low">☐</span> Low
+                    </span>
+                </td>
+            </tr>
+        </table>
+        
+        <!-- Component List -->
+        <table class="excel-table" style="margin-top: 10px;">
+            <tr class="section-header">
+                <td colspan="19">Component of the Purchase</td>
+            </tr>
+            <tr>
+                <th style="width: 5%;">No.</th>
+                <th style="width: 35%;">Description</th>
+                <th colspan="8"></th>
+                <th style="width: 10%;">Purchase Quantity</th>
+                <th style="width: 10%;">Unit Price</th>
+                <th style="width: 10%;">Total Price</th>
+                <th style="width: 5%;">Tax</th>
+            </tr>
+            <tbody id="print-items-body">
+                <!-- Items will be populated by JavaScript -->
+            </tbody>
+            <tr class="total-row">
+                <td colspan="16" style="text-align: right; font-weight: bold;">SUB TOTAL:</td>
+                <td colspan="3" id="print-subtotal">RM 0.00</td>
+            </tr>
+            <tr class="total-row">
+                <td colspan="16" style="text-align: right; font-weight: bold;">TAX:</td>
+                <td colspan="3" id="print-tax">RM 0.00</td>
+            </tr>
+            <tr class="total-row" style="background-color: #ffd966;">
+                <td colspan="16" style="text-align: right; font-weight: bold;">GRAND TOTAL:</td>
+                <td colspan="3" id="print-grand-total">RM 0.00</td>
+            </tr>
+        </table>
+        
+        <!-- Notes -->
+        <div style="font-size: 9pt; margin-top: 5px; color: #666; padding: 5px;">
+            * Please attached together supporting documents such as Bill of quantity / Master Budget Document
+        </div>
+        
+        <!-- Payment Information -->
+        <table class="excel-table" style="margin-top: 10px;">
+            <tr class="section-header">
+                <td colspan="19">Payment Information</td>
+            </tr>
+            <tr>
+                <td colspan="8">
+                    Vendor Name: <span id="print-vendor-name"></span>
+                </td>
+                <td colspan="6">
+                    Payment Term: <span id="print-payment-terms"></span>
+                </td>
+                <td colspan="5" rowspan="4" style="vertical-align: top; padding-top: 5px;">
+                    Source of Fund:
+                    <br>
+                    <span style="margin-left: 10px;">
+                        Internal Fund: <span id="print-fund-internal">100</span>%
+                    </span>
+                    <br>
+                    <span style="margin-left: 10px;">
+                        Loan: <span id="print-fund-loan">0</span>%
+                    </span>
+                    <br>
+                    <span style="margin-left: 10px;">
+                        Lease: <span id="print-fund-lease">0</span>%
+                    </span>
+                </td>
+            </tr>
+            <tr>
+                <td colspan="14" style="height: 30px;">
+                    Vendor Code: <span id="print-vendor-code"></span>
+                </td>
+            </tr>
+            <tr>
+                <td colspan="14" style="height: 30px;">
+                    Contact: <span id="print-vendor-contact"></span>
+                </td>
+            </tr>
+            <tr>
+                <td colspan="14" style="height: 30px;">
+                    Delivery: <span id="print-delivery-address"></span>
+                </td>
+            </tr>
+        </table>
+        
+        <!-- Signatures -->
+        <table class="excel-table" style="margin-top: 20px;">
+            <tr>
+                <td colspan="6" class="signature-cell">
+                    <div style="border-top: 1px solid #000; padding-top: 5px; margin-top: 30px;">
+                        Name: <strong id="print-signature-requester">{{ session.name }}</strong><br>
+                        Date: <span id="print-requester-date">{{ datetime.now().strftime('%d/%m/%Y') }}</span><br>
+                        <strong>Requestor</strong>
+                    </div>
+                </td>
+                <td colspan="6" class="signature-cell">
+                    <div style="border-top: 1px solid #000; padding-top: 5px; margin-top: 30px;">
+                        Name: _________________________<br>
+                        Date: _________________________<br>
+                        <strong>Approver 1: Division Head / Director</strong>
+                    </div>
+                </td>
+                <td colspan="7" class="signature-cell">
+                    <div style="border-top: 1px solid #000; padding-top: 5px; margin-top: 30px;">
+                        Name: _________________________<br>
+                        Date: _________________________<br>
+                        <strong>Approver 2: Group CFO (UP TO RM10K)</strong>
+                    </div>
+                </td>
+            </tr>
+            <tr style="height: 80px;">
+                <td colspan="6" class="signature-cell">
+                    <div style="border-top: 1px solid #000; padding-top: 5px; margin-top: 30px;">
+                        Name: _________________________<br>
+                        Date: _________________________<br>
+                        <strong>Approver 3: Group CEO (RM11K TO RM49K)</strong>
+                    </div>
+                </td>
+                <td colspan="6" class="signature-cell">
+                    <div style="border-top: 1px solid #000; padding-top: 5px; margin-top: 30px;">
+                        Name: _________________________<br>
+                        Date: _________________________<br>
+                        <strong>Approver 4: Group MD (RM50K ABOVE)</strong>
+                    </div>
+                </td>
+                <td colspan="7" class="signature-cell">
+                    <div style="border-top: 1px solid #000; padding-top: 5px; margin-top: 30px;">
+                        Name: _________________________<br>
+                        Date: _________________________<br>
+                        <strong>Received by: Group Procurement</strong>
+                    </div>
+                </td>
+            </tr>
+        </table>
+        
+        <!-- Quotation Info -->
+        <div style="font-size: 9pt; margin-top: 10px; padding: 5px; border: 1px solid #ccc; background-color: #f9f9f9;">
+            <strong>Quotation Information:</strong>
+            <br>
+            Quotation Date: <span id="print-quotation-date">{{ datetime.now().strftime('%d/%m/%Y') }}</span> &nbsp;&nbsp;
+            Quotation Ref: <span id="print-quotation-ref"></span> &nbsp;&nbsp;
+            Validity: <span id="print-quotation-validity">60</span> days
+        </div>
     </div>
 </div>
 
-<form method="POST" action="/pr/new" id="prForm" onsubmit="return validatePRForm()">
-    <!-- Section 1: Basic Information -->
-    <div class="form-section">
-        <div class="section-title">
-            <i class="fas fa-info-circle"></i>
-            1. Basic Information
-        </div>
-        
-        <div class="form-row">
-            <div class="form-group">
-                <label for="requester_name" class="form-label">
-                    Requester Name *
-                </label>
-                <input type="text" class="form-control" id="requester_name" 
-                       name="requester_name" value="{{ session.name }}" required readonly>
-            </div>
-            
-            <div class="form-group">
-                <label for="department" class="form-label">
-                    Department *
-                </label>
-                <select class="form-control" id="department" name="department" required>
-                    <option value="">Select Department</option>
-                    {% for dept in departments %}
-                    <option value="{{ dept }}" {% if dept == session.department %}selected{% endif %}>
-                        {{ dept }}
-                    </option>
-                    {% endfor %}
-                </select>
-            </div>
-            
-            <div class="form-group">
-                <label for="fiscal_year" class="form-label">
-                    Fiscal Year *
-                </label>
-                <select class="form-control" id="fiscal_year" name="fiscal_year" required>
-                    {% set current_year = datetime.now().year %}
-                    <option value="{{ current_year }}">{{ current_year }}</option>
-                    <option value="{{ current_year + 1 }}">{{ current_year + 1 }}</option>
-                </select>
-            </div>
-        </div>
-        
-        <div class="form-group">
-            <label for="purpose" class="form-label">
-                Purpose / Description *
-                <span class="text-muted" style="font-weight: normal;">(What you need and why)</span>
-            </label>
-            <textarea class="form-control" id="purpose" name="purpose" 
-                      rows="3" required placeholder="Describe what you need to purchase and why it's needed..."></textarea>
-            <div class="form-text">Be specific about the business need and expected benefits.</div>
-        </div>
-        
-        <div class="form-row">
-            <div class="form-group">
-                <label for="priority" class="form-label">
-                    Priority Level
-                </label>
-                <select class="form-control" id="priority" name="priority">
-                    <option value="LOW">Low</option>
-                    <option value="NORMAL" selected>Normal</option>
-                    <option value="HIGH">High</option>
-                    <option value="URGENT">Urgent</option>
-                </select>
-            </div>
-            
-            <div class="form-group">
-                <label for="budget_category" class="form-label">
-                    Budget Category
-                </label>
-                <select class="form-control" id="budget_category" name="budget_category">
-                    <option value="">Select Budget Category</option>
-                    {% for category in budget_categories %}
-                    <option value="{{ category }}">{{ category }}</option>
-                    {% endfor %}
-                </select>
-                <div class="form-text">Select the budget category for this purchase</div>
-            </div>
-        </div>
+<!-- Loading Overlay -->
+<div class="loading-overlay" id="loadingOverlay">
+    <div class="loading-spinner">
+        <i class="fas fa-spinner fa-spin fa-3x" style="color: var(--primary-500); margin-bottom: 1rem;"></i>
+        <h4>Submitting PR...</h4>
+        <p>Please wait while we process your request</p>
     </div>
-    
-    <!-- Section 2: Budget Check (Dynamic) -->
-    <div class="form-section" id="budgetSection" style="display: none;">
-        <div class="section-title">
-            <i class="fas fa-coins"></i>
-            2. Budget Availability Check
-        </div>
-        
-        <div id="budgetResult">
-            <div class="budget-info">
-                <div style="display: flex; align-items: center; gap: 1rem; margin-bottom: 0.5rem;">
-                    <i class="fas fa-sync-alt fa-spin"></i>
-                    <span>Checking budget availability...</span>
-                </div>
-            </div>
-        </div>
-        
-        <div id="budgetWarning" class="budget-warning" style="display: none;">
-            <div style="display: flex; align-items: flex-start; gap: 1rem;">
-                <i class="fas fa-exclamation-triangle" style="color: var(--warning); font-size: 1.5rem;"></i>
-                <div>
-                    <strong>Budget Exception Required</strong>
-                    <p style="margin: 0.5rem 0;">This purchase exceeds the available budget. You'll need budget exception approval before submission.</p>
-                    <small class="text-muted">Total amount exceeds remaining budget for selected category.</small>
-                </div>
-            </div>
-        </div>
-    </div>
-    
-    <!-- Section 3: Component List -->
-    <div class="form-section">
-        <div class="section-title">
-            <i class="fas fa-list-alt"></i>
-            3. Component List
-            <span class="text-muted" style="font-weight: normal; font-size: 0.875rem; margin-left: auto;">
-                Add all items to be purchased
-            </span>
-        </div>
-        
-        <div class="table-responsive">
-            <table class="items-table" id="itemsTable">
-                <thead>
-                    <tr>
-                        <th style="width: 5%;">#</th>
-                        <th style="width: 30%;">Item Description *</th>
-                        <th style="width: 10%;">Qty *</th>
-                        <th style="width: 15%;">Unit Price *</th>
-                        <th style="width: 15%;">Total Price</th>
-                        <th style="width: 15%;">Catalog #</th>
-                        <th style="width: 5%;"></th>
-                    </tr>
-                </thead>
-                <tbody id="itemsBody">
-                    <!-- Items will be added here dynamically -->
-                </tbody>
-            </table>
-        </div>
-        
-        <div class="text-center mt-2">
-            <button type="button" class="btn btn-outline" onclick="addNewItem()">
-                <i class="fas fa-plus"></i> Add Item
-            </button>
-        </div>
-        
-        <div class="total-summary" id="totalSummary" style="display: none;">
-            <div style="display: flex; justify-content: space-between; align-items: center;">
-                <div>
-                    <div style="font-size: 0.875rem; opacity: 0.9;">Total Amount</div>
-                    <div class="total-amount" id="totalAmount">RM 0.00</div>
-                    <div style="font-size: 0.875rem; opacity: 0.9;">
-                        <span id="itemCount">0</span> items
-                    </div>
-                </div>
-                <div class="currency-selector">
-                    <button type="button" class="currency-btn active" data-currency="MYR">MYR</button>
-                    <button type="button" class="currency-btn" data-currency="USD">USD</button>
-                    <button type="button" class="currency-btn" data-currency="SGD">SGD</button>
-                </div>
-            </div>
-        </div>
-        
-        <!-- Hidden field for items JSON -->
-        <input type="hidden" name="items" id="itemsJson" value="[]">
-    </div>
-    
-    <!-- Section 4: Vendor & Payment Information -->
-    <div class="form-section">
-        <div class="section-title">
-            <i class="fas fa-building"></i>
-            4. Vendor & Payment Information
-        </div>
-        
-        <div class="form-row">
-            <div class="form-group">
-                <label for="vendor_name" class="form-label">
-                    Vendor Name *
-                </label>
-                <select class="form-control" id="vendor_name" name="vendor_name" required>
-                    <option value="">Select Vendor</option>
-                    {% for vendor in vendors %}
-                    <option value="{{ vendor.vendor_name }}" data-code="{{ vendor.vendor_code }}">
-                        {{ vendor.vendor_name }} ({{ vendor.vendor_code }})
-                    </option>
-                    {% endfor %}
-                    <option value="other">+ Add New Vendor</option>
-                </select>
-            </div>
-            
-            <div class="form-group">
-                <label for="vendor_code" class="form-label">
-                    Vendor Code
-                </label>
-                <input type="text" class="form-control" id="vendor_code" 
-                       name="vendor_code" placeholder="Vendor code or registration number">
-            </div>
-        </div>
-        
-        <div class="form-group">
-            <label for="vendor_contact" class="form-label">
-                Vendor Contact Information
-            </label>
-            <input type="text" class="form-control" id="vendor_contact" 
-                   name="vendor_contact" placeholder="Contact person, email, phone">
-        </div>
-        
-        <div class="form-row">
-            <div class="form-group">
-                <label for="delivery_address" class="form-label">
-                    Delivery Address
-                </label>
-                <textarea class="form-control" id="delivery_address" name="delivery_address" 
-                          rows="2" placeholder="Where should items be delivered?"></textarea>
-            </div>
-            
-            <div class="form-group">
-                <label for="payment_terms" class="form-label">
-                    Payment Terms
-                </label>
-                <select class="form-control" id="payment_terms" name="payment_terms">
-                    <option value="">Select Payment Terms</option>
-                    <option value="NET15">NET 15</option>
-                    <option value="NET30" selected>NET 30</option>
-                    <option value="NET45">NET 45</option>
-                    <option value="NET60">NET 60</option>
-                    <option value="UPON_DELIVERY">Upon Delivery</option>
-                    <option value="ADVANCE_50">50% Advance, 50% Upon Delivery</option>
-                </select>
-            </div>
-        </div>
-    </div>
-    
-    <!-- Section 5: Financial Details -->
-    <div class="form-section">
-        <div class="section-title">
-            <i class="fas fa-calculator"></i>
-            5. Financial Details
-        </div>
-        
-        <div class="form-row">
-            <div class="form-group">
-                <label for="currency" class="form-label">
-                    Currency *
-                </label>
-                <select class="form-control" id="currency" name="currency" required>
-                    <option value="MYR" selected>Malaysian Ringgit (MYR)</option>
-                    <option value="USD">US Dollar (USD)</option>
-                    <option value="SGD">Singapore Dollar (SGD)</option>
-                    <option value="EUR">Euro (EUR)</option>
-                </select>
-            </div>
-            
-            <div class="form-group">
-                <label for="tax_amount" class="form-label">
-                    Tax Amount (if applicable)
-                </label>
-                <input type="number" class="form-control" id="tax_amount" 
-                       name="tax_amount" step="0.01" min="0" value="0">
-                <div class="form-text">Enter tax amount separately if not included in item prices</div>
-            </div>
-        </div>
-        
-        <div class="form-group">
-            <div class="budget-info">
-                <div style="display: flex; justify-content: space-between; align-items: center;">
-                    <div>
-                        <strong>Approval Path Based on Total Amount</strong>
-                        <p style="margin: 0.5rem 0 0; font-size: 0.875rem;">
-                            Based on the flowchart: ≤ RM10,000 (Approver 1) • RM11,000-49,999 (Approver 2 → 3) • ≥ RM50,000 (Approver 4)
-                        </p>
-                    </div>
-                    <div style="text-align: right;">
-                        <div style="font-size: 0.875rem;">Estimated Approval Path</div>
-                        <div style="font-size: 1.25rem; font-weight: 600;" id="approvalPathText">-</div>
-                    </div>
-                </div>
-            </div>
-        </div>
-    </div>
-    
-    <!-- Section 6: Approval Path Visualization -->
-    <div class="form-section">
-        <div class="section-title">
-            <i class="fas fa-project-diagram"></i>
-            6. Approval Process
-        </div>
-        
-        <div class="approval-path" id="approvalVisualization">
-            <!-- Dynamic approval path will be inserted here -->
-        </div>
-        
-        <div style="text-align: center; margin-top: 2rem;">
-            <div style="background: var(--gray-100); padding: 1rem; border-radius: 8px; display: inline-block;">
-                <i class="fas fa-info-circle" style="color: var(--primary-600); margin-right: 0.5rem;"></i>
-                <span>This PR will follow the approval path shown above based on total amount and budget status.</span>
-            </div>
-        </div>
-    </div>
-    
-    <!-- Form Actions -->
-    <div class="card" style="background: var(--gray-50);">
-        <div style="padding: 1.5rem; display: flex; justify-content: space-between; align-items: center;">
-            <div>
-                <strong>Ready to Submit?</strong>
-                <p style="margin: 0.5rem 0 0; font-size: 0.875rem; color: var(--gray-600);">
-                    Review all information before saving. You can submit for approval later.
-                </p>
-            </div>
-            <div class="action-buttons">
-                <button type="submit" class="btn btn-primary btn-lg">
-                    <i class="fas fa-save"></i> Save as Draft
-                </button>
-            </div>
-        </div>
-    </div>
-</form>
-
+</div>
 {% endblock %}
 
 {% block extra_js %}
 <script>
-    // Item counter
+    // Global variables
     let itemCounter = 0;
     let items = [];
     let currency = 'MYR';
+    let quotationFile = null;
+    const allowedExtensions = {{ allowed_extensions|tojson }};
+    const maxFileSize = 10 * 1024 * 1024; // 10MB
     
     // Initialize with one empty item
     document.addEventListener('DOMContentLoaded', function() {
@@ -550,6 +1046,7 @@
                 currency = this.dataset.currency;
                 document.getElementById('currency').value = currency;
                 updateTotal();
+                updatePrintFormat();
             });
         });
         
@@ -564,14 +1061,31 @@
                 document.getElementById('vendor_code').value = '';
                 document.getElementById('vendor_code').focus();
             }
+            updatePrintFormat();
         });
         
         // Budget category change
-        document.getElementById('budget_category').addEventListener('change', checkBudget);
-        document.getElementById('department').addEventListener('change', checkBudget);
+        document.getElementById('budget_category').addEventListener('change', function() {
+            checkBudget();
+            updatePrintFormat();
+        });
+        
+        document.getElementById('department').addEventListener('change', function() {
+            checkBudget();
+            updatePrintFormat();
+        });
         
         // Auto-calculate approval path
         setInterval(calculateApprovalPath, 1000);
+        
+        // File upload handling
+        setupFileUpload();
+        
+        // Update print format when form changes
+        setupPrintFormatUpdates();
+        
+        // Initial update of print format
+        updatePrintFormat();
     });
     
     // Add new item row
@@ -634,11 +1148,18 @@
         // Add event listeners to new row
         const inputs = row.querySelectorAll('input, select, textarea');
         inputs.forEach(input => {
-            input.addEventListener('input', updateItem);
-            input.addEventListener('change', updateItem);
+            input.addEventListener('input', function() {
+                updateItem(event);
+                updatePrintFormat();
+            });
+            input.addEventListener('change', function() {
+                updateItem(event);
+                updatePrintFormat();
+            });
         });
         
         updateTotal();
+        updatePrintFormat();
     }
     
     // Update item calculations
@@ -673,6 +1194,7 @@
             });
             itemCounter = rows.length;
             updateTotal();
+            updatePrintFormat();
         }
     }
     
@@ -731,7 +1253,7 @@
     async function checkBudget() {
         const department = document.getElementById('department').value;
         const category = document.getElementById('budget_category').value;
-        const amount = updateTotal(); // Get current total
+        const amount = updateTotal();
         
         if (!department || !category || amount <= 0) {
             document.getElementById('budgetSection').style.display = 'none';
@@ -834,15 +1356,218 @@
         `).join('');
     }
     
+    // File upload handling
+    function setupFileUpload() {
+        const fileInput = document.getElementById('quotationFile');
+        const uploadArea = document.getElementById('uploadArea');
+        
+        // Click to upload
+        uploadArea.addEventListener('click', (e) => {
+            if (e.target.closest('.btn')) return;
+            fileInput.click();
+        });
+        
+        // Handle file input change
+        fileInput.addEventListener('change', function() {
+            handleFiles(this.files);
+        });
+    }
+    
+    // Handle uploaded files
+    function handleFiles(files) {
+        if (files.length === 0) return;
+        
+        const file = files[0];
+        const fileExt = file.name.split('.').pop().toLowerCase();
+        
+        // Validate file type
+        if (!allowedExtensions.includes(fileExt)) {
+            alert(`Invalid file type. Allowed: ${allowedExtensions.join(', ')}`);
+            return;
+        }
+        
+        // Validate file size
+        if (file.size > maxFileSize) {
+            alert('File size must be less than 10MB');
+            return;
+        }
+        
+        quotationFile = file;
+        
+        // Update preview
+        document.getElementById('fileName').textContent = file.name;
+        document.getElementById('fileSize').textContent = formatFileSize(file.size);
+        
+        // Update file icon based on type
+        const fileIcon = document.querySelector('.file-icon i');
+        if (fileExt === 'pdf') {
+            fileIcon.className = 'fas fa-file-pdf';
+            fileIcon.style.color = '#dc2626';
+        } else if (['jpg', 'jpeg', 'png', 'gif'].includes(fileExt)) {
+            fileIcon.className = 'fas fa-file-image';
+            fileIcon.style.color = '#059669';
+        } else if (['doc', 'docx'].includes(fileExt)) {
+            fileIcon.className = 'fas fa-file-word';
+            fileIcon.style.color = '#2563eb';
+        } else {
+            fileIcon.className = 'fas fa-file';
+            fileIcon.style.color = '#6b7280';
+        }
+        
+        // Show preview
+        document.getElementById('filePreview').style.display = 'block';
+        
+        // Update upload area text
+        document.getElementById('uploadArea').innerHTML = `
+            <i class="fas fa-check-circle" style="color: var(--success);"></i>
+            <h4 style="margin-bottom: 0.5rem;">File uploaded successfully</h4>
+            <p style="color: var(--gray-600); margin-bottom: 0.5rem;">Click to change file</p>
+        `;
+    }
+    
+    // Remove uploaded file
+    function removeFile() {
+        quotationFile = null;
+        document.getElementById('quotationFile').value = '';
+        document.getElementById('filePreview').style.display = 'none';
+        
+        // Reset upload area
+        document.getElementById('uploadArea').innerHTML = `
+            <i class="fas fa-cloud-upload-alt"></i>
+            <h4 style="margin-bottom: 0.5rem;">Click to upload quotation file</h4>
+            <p style="color: var(--gray-600); margin-bottom: 0.5rem;">or drag and drop file here</p>
+            <p style="font-size: 0.875rem; color: var(--gray-500);">
+                Supported formats: PDF, JPG, PNG, DOC, DOCX (Max: 10MB)
+            </p>
+        `;
+    }
+    
+    // Format file size
+    function formatFileSize(bytes) {
+        if (bytes === 0) return '0 Bytes';
+        const k = 1024;
+        const sizes = ['Bytes', 'KB', 'MB', 'GB'];
+        const i = Math.floor(Math.log(bytes) / Math.log(k));
+        return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
+    }
+    
+    // Setup print format updates
+    function setupPrintFormatUpdates() {
+        const inputs = ['department', 'priority', 'budget_category', 'vendor_name', 
+                       'payment_terms', 'tax_amount', 'currency', 'vendor_code',
+                       'vendor_contact', 'delivery_address', 'quotation_date',
+                       'quotation_ref', 'quotation_validity', 'quotation_notes',
+                       'fiscal_year', 'purpose'];
+        
+        inputs.forEach(id => {
+            const element = document.getElementById(id);
+            if (element) {
+                element.addEventListener('change', updatePrintFormat);
+                element.addEventListener('input', updatePrintFormat);
+            }
+        });
+    }
+    
+    // Update print format
+    function updatePrintFormat() {
+        // Update basic information
+        document.getElementById('print-division').textContent = document.getElementById('department').value || 'N/A';
+        document.getElementById('print-requester').textContent = document.getElementById('requester_name').value;
+        document.getElementById('print-currency').textContent = currency;
+        
+        // Update budget checkboxes
+        const budgetCategory = document.getElementById('budget_category').value;
+        if (budgetCategory) {
+            document.getElementById('print-budget-yes').textContent = '☑';
+            document.getElementById('print-budget-no').textContent = '☐';
+        } else {
+            document.getElementById('print-budget-yes').textContent = '☐';
+            document.getElementById('print-budget-no').textContent = '☑';
+        }
+        
+        // Update purpose (always New Order for now)
+        document.getElementById('print-purpose-new').textContent = '☑';
+        document.getElementById('print-purpose-assets').textContent = '☐';
+        document.getElementById('print-purpose-project').textContent = '☐';
+        document.getElementById('print-purpose-other').textContent = '☐';
+        document.getElementById('print-purpose-other-text').textContent = '';
+        
+        // Update priority
+        const priority = document.getElementById('priority').value;
+        document.getElementById('print-priority-high').textContent = (priority === 'URGENT' || priority === 'HIGH') ? '☑' : '☐';
+        document.getElementById('print-priority-medium').textContent = (priority === 'NORMAL') ? '☑' : '☐';
+        document.getElementById('print-priority-low').textContent = (priority === 'LOW') ? '☑' : '☐';
+        
+        // Update vendor information
+        document.getElementById('print-vendor-name').textContent = document.getElementById('vendor_name').value || 'N/A';
+        document.getElementById('print-payment-terms').textContent = document.getElementById('payment_terms').value || 'N/A';
+        document.getElementById('print-vendor-code').textContent = document.getElementById('vendor_code').value || '';
+        document.getElementById('print-vendor-contact').textContent = document.getElementById('vendor_contact').value || '';
+        document.getElementById('print-delivery-address').textContent = document.getElementById('delivery_address').value || '';
+        
+        // Update quotation information
+        document.getElementById('print-quotation-date').textContent = document.getElementById('quotation_date').value || 'N/A';
+        document.getElementById('print-quotation-ref').textContent = document.getElementById('quotation_ref').value || 'N/A';
+        document.getElementById('print-quotation-validity').textContent = document.getElementById('quotation_validity').value || '60';
+        
+        // Update financial amounts
+        const total = updateTotal();
+        const tax = parseFloat(document.getElementById('tax_amount').value) || 0;
+        const grandTotal = total + tax;
+        
+        document.getElementById('print-total-amount').textContent = `${currency} ${grandTotal.toFixed(2)}`;
+        document.getElementById('print-subtotal').textContent = `${currency} ${total.toFixed(2)}`;
+        document.getElementById('print-tax').textContent = `${currency} ${tax.toFixed(2)}`;
+        document.getElementById('print-grand-total').textContent = `${currency} ${grandTotal.toFixed(2)}`;
+        
+        // Update items table for print
+        const printItemsBody = document.getElementById('print-items-body');
+        printItemsBody.innerHTML = '';
+        
+        items.forEach((item, index) => {
+            const row = document.createElement('tr');
+            const totalPrice = (parseFloat(item.quantity) || 0) * (parseFloat(item.unit_price) || 0);
+            const specs = item.specifications ? `<br><small>${item.specifications}</small>` : '';
+            
+            row.innerHTML = `
+                <td>${index + 1}</td>
+                <td>${item.description}${specs}</td>
+                <td colspan="8"></td>
+                <td>${item.quantity} ${item.uom}</td>
+                <td>${currency} ${parseFloat(item.unit_price).toFixed(2)}</td>
+                <td>${currency} ${totalPrice.toFixed(2)}</td>
+                <td></td>
+            `;
+            printItemsBody.appendChild(row);
+        });
+        
+        // Add empty rows if less than 10 items
+        const remainingRows = Math.max(10 - items.length, 3);
+        for (let i = 0; i < remainingRows; i++) {
+            const row = document.createElement('tr');
+            row.innerHTML = `
+                <td></td>
+                <td></td>
+                <td colspan="8"></td>
+                <td></td>
+                <td></td>
+                <td></td>
+                <td></td>
+            `;
+            printItemsBody.appendChild(row);
+        }
+    }
+    
     // Form validation
     function validatePRForm() {
+        // Validate items
         const total = updateTotal();
         if (total <= 0) {
             alert('Please add at least one item with a positive amount.');
             return false;
         }
         
-        // Validate items
+        // Validate items description
         let hasInvalidItems = false;
         document.querySelectorAll('.item-description').forEach(input => {
             if (!input.value.trim()) {
@@ -858,7 +1583,113 @@
             return false;
         }
         
+        // Validate quotation file
+        if (!quotationFile) {
+            alert('Quotation file is required. Please upload vendor quotation.');
+            document.getElementById('uploadArea').scrollIntoView({ behavior: 'smooth' });
+            document.getElementById('uploadArea').style.borderColor = 'var(--danger)';
+            setTimeout(() => {
+                document.getElementById('uploadArea').style.borderColor = '';
+            }, 2000);
+            return false;
+        }
+        
+        // Validate vendor name
+        const vendorName = document.getElementById('vendor_name').value;
+        if (!vendorName || vendorName === '') {
+            alert('Please select a vendor.');
+            return false;
+        }
+        
         return true;
+    }
+    
+    // Form submission with print
+    function validateAndSubmitPRForm() {
+        if (!validatePRForm()) {
+            return false;
+        }
+        
+        // Show loading overlay
+        document.getElementById('loadingOverlay').style.display = 'flex';
+        
+        // Submit form
+        const formData = new FormData(document.getElementById('prForm'));
+        
+        fetch('/pr/new', {
+            method: 'POST',
+            body: formData
+        })
+        .then(response => {
+            if (!response.ok) {
+                throw new Error('Network response was not ok');
+            }
+            return response.text();
+        })
+        .then(data => {
+            // Hide loading overlay
+            document.getElementById('loadingOverlay').style.display = 'none';
+            
+            // Try to parse as JSON
+            try {
+                const result = JSON.parse(data);
+                if (result.success) {
+                    // Update PR number in print format
+                    document.getElementById('print-pr-no').textContent = result.pr_no || 'PR-XXXX';
+                    
+                    // Auto print after a short delay
+                    setTimeout(() => {
+                        printExcelFormat();
+                    }, 500);
+                    
+                    // Redirect after printing
+                    setTimeout(() => {
+                        window.location.href = result.redirect_url || '/dashboard';
+                    }, 3000);
+                } else {
+                    alert('Error: ' + (result.message || 'Unknown error'));
+                }
+            } catch (e) {
+                // If not JSON, assume HTML response
+                console.log('Received HTML response, assuming success');
+                
+                // Generate a temporary PR number for print
+                const prNumber = 'PR-' + new Date().getTime().toString().slice(-6);
+                document.getElementById('print-pr-no').textContent = prNumber;
+                
+                // Auto print
+                setTimeout(() => {
+                    printExcelFormat();
+                }, 500);
+                
+                // Show success message
+                alert('PR submitted successfully! Printing form...');
+            }
+        })
+        .catch(error => {
+            console.error('Error:', error);
+            document.getElementById('loadingOverlay').style.display = 'none';
+            alert('Error submitting form. Please try again.');
+        });
+        
+        return false; // Prevent default form submission
+    }
+    
+    // Function to print Excel format
+    function printExcelFormat() {
+        // Update print format with current data
+        updatePrintFormat();
+        
+        // Show print section
+        document.getElementById('excelPrintFormat').style.display = 'block';
+        
+        // Print
+        window.print();
+        
+        // Hide print section after printing
+        setTimeout(() => {
+            document.getElementById('excelPrintFormat').style.display = 'none';
+        }, 100);
     }
 </script>
 {% endblock %}
