@@ -25,6 +25,7 @@ DB_PATH = os.environ.get(
     os.path.join(BASE_DIR, "pr_enterprise.db")
 )
 
+
 # File upload config
 UPLOAD_FOLDER = os.path.join(BASE_DIR, "uploads")
 QUOTATION_FOLDER = os.path.join(UPLOAD_FOLDER, "quotations")
@@ -219,26 +220,33 @@ def migrate_vendor_columns():
     except Exception as e:
         print(f"⚠️ Migration error: {e}")
 
-def migrate_approval_history_columns():
+def migrate_pr_columns():
     """
-    Add missing columns to approval_history table if they don't exist
+    Migration untuk column quotation_filename dan quotation_uploaded_at
     """
     try:
         with db() as conn:
-            # Check and add missing columns
+            # Check if columns already exist
             try:
-                conn.execute("ALTER TABLE approval_history ADD COLUMN ip_address TEXT")
-                print("✅ Added column: ip_address to approval_history")
-            except sqlite3.OperationalError:
-                pass
+                conn.execute("""
+                ALTER TABLE pr ADD COLUMN quotation_filename TEXT
+                """)
+                print("✅ Added column: quotation_filename")
+            except sqlite3.OperationalError as e:
+                if "duplicate column name" not in str(e):
+                    raise
             
             try:
-                conn.execute("ALTER TABLE approval_history ADD COLUMN user_agent TEXT")
-                print("✅ Added column: user_agent to approval_history")
-            except sqlite3.OperationalError:
-                pass
+                conn.execute("""
+                ALTER TABLE pr ADD COLUMN quotation_uploaded_at TEXT
+                """)
+                print("✅ Added column: quotation_uploaded_at")
+            except sqlite3.OperationalError as e:
+                if "duplicate column name" not in str(e):
+                    raise
+                    
     except Exception as e:
-        print(f"⚠️ approval_history migration error: {e}")
+        print(f"⚠️ PR columns migration error: {e}")
 
 def init_db():
     """
@@ -463,7 +471,6 @@ def init_db():
         migrate_vendor_columns()
         migrate_po_table()
         migrate_quotation_table()
-        migrate_approval_history_columns()
         
     except Exception as e:
         print(f"❌ Error initializing database: {e}")
@@ -782,7 +789,7 @@ def dashboard():
             elif role == 'procurement':
                 # Procurement dashboard
                 stats['total_submitted'] = conn.execute("""
-                SELECT COUNT(*) FROM pr WHERE status='SUBMITTED'
+                SELECT COUNT(*) FROM pr WHERE status IN ('SUBMITTED', 'BUDGET_EXCEPTION_PENDING')
                 AND id NOT IN (SELECT pr_id FROM po)
                 """).fetchone()[0]
                 
@@ -792,13 +799,13 @@ def dashboard():
                 
                 stats['pending_po'] = conn.execute("""
                 SELECT COUNT(*) FROM pr 
-                WHERE status='SUBMITTED'
+                WHERE status IN ('SUBMITTED', 'BUDGET_EXCEPTION_PENDING')
                 AND id NOT IN (SELECT pr_id FROM po)
                 """).fetchone()[0]
                 
                 stats['without_quotation'] = conn.execute("""
                 SELECT COUNT(*) FROM pr 
-                WHERE status='SUBMITTED'
+                WHERE status IN ('SUBMITTED', 'BUDGET_EXCEPTION_PENDING')
                 AND quotation_filename IS NULL
                 AND id NOT IN (SELECT pr_id FROM po)
                 """).fetchone()[0]
@@ -808,7 +815,7 @@ def dashboard():
                 SELECT p.*, u.full_name as requester_name_full
                 FROM pr p
                 JOIN users u ON p.created_by = u.id
-                WHERE p.status='SUBMITTED'
+                WHERE p.status IN ('SUBMITTED', 'BUDGET_EXCEPTION_PENDING')
                 AND p.id NOT IN (SELECT pr_id FROM po)
                 ORDER BY p.created_at DESC
                 LIMIT 10
@@ -824,11 +831,11 @@ def dashboard():
                 SELECT COUNT(*) FROM pr WHERE quotation_filename IS NOT NULL
                 """).fetchone()[0]
                 
-                # Budget exception stats for superadmin (for reference only)
+                # Budget exception stats for superadmin
                 stats['pending_budget_exceptions'] = conn.execute("""
                 SELECT COUNT(*) FROM pr 
-                WHERE budget_status = 'OUT_OF_BUDGET'
-                AND status = 'SUBMITTED'
+                WHERE budget_status = 'OUT_OF_BUDGET' 
+                AND status = 'BUDGET_EXCEPTION_PENDING'
                 """).fetchone()[0]
                 
                 # Get semua PR
@@ -874,7 +881,7 @@ def dashboard():
         return redirect("/")
 
 # ==================================================
-# CREATE PR - DENGAN QUOTATION UPLOAD (FIXED - NO APPROVAL FLOW)
+# CREATE PR - DENGAN QUOTATION UPLOAD (FIXED)
 # ==================================================
 @app.route("/pr/new", methods=["GET", "POST"])
 @login_required
@@ -918,13 +925,15 @@ def pr_new():
             # Generate PR number
             pr_no = generate_pr_no(department)
             
-            # Budget status (NO approval flow - always SUBMITTED)
+            # Determine initial status
+            initial_status = "SUBMITTED"  # SELALU SUBMITTED (tanpa approval)
+            
+            # Budget status
             if budget_check and budget_check['available']:
                 budget_status = BUDGET_STATUS['IN_BUDGET']
             else:
                 budget_status = BUDGET_STATUS['OUT_OF_BUDGET']
-            
-            initial_status = "SUBMITTED"  # always SUBMITTED, no approval needed
+                initial_status = "BUDGET_EXCEPTION_PENDING"
             
             with db() as conn:
                 # Validate vendor code if provided
@@ -1062,6 +1071,11 @@ def pr_new():
                 )
             
             flash(f"PR {pr_no} created and submitted successfully with quotation!", "success")
+            
+            if initial_status == "BUDGET_EXCEPTION_PENDING":
+                flash("This PR requires budget exception approval.", "warning")
+                return redirect(f"/pr/{pr_id}/budget-exception")
+            
             return redirect("/dashboard")
             
         except Exception as e:
@@ -1237,13 +1251,13 @@ def download_quotation(pr_id):
         return redirect(f"/pr/{pr_id}")
 
 # ==================================================
-# BUDGET EXCEPTION APPROVAL (RECORD-ONLY - KEEP FOR REFERENCE)
+# BUDGET EXCEPTION APPROVAL (RECORD-ONLY)
 # ==================================================
 @app.route("/pr/<int:pr_id>/budget-exception", methods=["GET", "POST"])
 @login_required
 @role_required("superadmin")
 def budget_exception_approval(pr_id):
-    """Handle budget exception approval - SUPERADMIN ONLY (For reference only)"""
+    """Handle budget exception approval - SUPERADMIN ONLY"""
     try:
         with db() as conn:
             pr = conn.execute("""
@@ -1253,13 +1267,110 @@ def budget_exception_approval(pr_id):
             WHERE p.id=?
             """, (pr_id,)).fetchone()
             
-            if not pr:
-                abort(404, description="PR not found")
+            if not pr or pr['budget_status'] != BUDGET_STATUS['OUT_OF_BUDGET']:
+                abort(404, description="PR not found or doesn't require budget exception")
             
-            # Show message that budget exception is not required
-            flash("Budget exception approval is no longer required. PR is already SUBMITTED.", "info")
-            return redirect(f"/pr/{pr_id}")
+            if request.method == "POST":
+                action = request.form.get("action")
+                comments = request.form.get("comments", "")
+                
+                if action == "approve":
+                    # Update PR status
+                    conn.execute("""
+                    UPDATE pr SET
+                        budget_status=?,
+                        budget_exception_approver=?,
+                        budget_exception_date=?,
+                        budget_exception_notes=?,
+                        status='SUBMITTED',
+                        last_updated=?
+                    WHERE id=?
+                    """, (
+                        BUDGET_STATUS['EXCEPTION_APPROVED'],
+                        session["user_id"],
+                        datetime.now().isoformat(),
+                        comments,
+                        datetime.now().isoformat(),
+                        pr_id
+                    ))
+                    
+                    # Log approval
+                    log_action(pr_id, "BUDGET_EXCEPTION_APPROVE", comments)
+                    
+                    # Audit log
+                    audit_log(
+                        session["user_id"],
+                        "APPROVE_BUDGET_EXCEPTION",
+                        "pr",
+                        pr_id,
+                        {"action": "approve", "comments": comments, "pr_no": pr['pr_no']}
+                    )
+                    
+                    # Create notifications
+                    create_notification(
+                        pr['created_by'],
+                        "Budget Exception Approved",
+                        f"Budget exception for PR {pr['pr_no']} has been approved by {session['name']}.",
+                        "SUCCESS",
+                        pr_id
+                    )
+                    
+                    flash("Budget exception approved! PR is now ready for PO.", "success")
+                    
+                elif action == "reject":
+                    conn.execute("""
+                    UPDATE pr SET
+                        status='REJECTED',
+                        last_updated=?
+                    WHERE id=?
+                    """, (
+                        datetime.now().isoformat(),
+                        pr_id
+                    ))
+                    
+                    log_action(pr_id, "BUDGET_EXCEPTION_REJECT", comments)
+                    
+                    # Audit log
+                    audit_log(
+                        session["user_id"],
+                        "REJECT_BUDGET_EXCEPTION",
+                        "pr",
+                        pr_id,
+                        {"action": "reject", "comments": comments, "pr_no": pr['pr_no']}
+                    )
+                    
+                    create_notification(
+                        pr['created_by'],
+                        "Budget Exception Rejected",
+                        f"Budget exception for PR {pr['pr_no']} has been rejected by {session['name']}.",
+                        "DANGER",
+                        pr_id
+                    )
+                    
+                    flash("Budget exception rejected.", "danger")
+                
+                return redirect("/dashboard")
             
+            # GET request - show budget exception details
+            items = conn.execute("""
+            SELECT * FROM pr_items WHERE pr_id=?
+            ORDER BY item_no
+            """, (pr_id,)).fetchall()
+            
+            budget_info = None
+            if pr['budget_category']:
+                budget_info = conn.execute("""
+                SELECT * FROM budget_categories
+                WHERE department=? AND category=? AND fiscal_year=?
+                """, (pr['department'], pr['budget_category'], pr['fiscal_year'])).fetchone()
+        
+        return render_template(
+            "budget_exception.html",
+            pr=pr,
+            items=items,
+            budget_info=budget_info
+        )
+        
     except Exception as e:
         print(f"⚠️ Budget exception error: {e}")
         flash("Error loading budget exception page", "danger")
@@ -1269,9 +1380,28 @@ def budget_exception_approval(pr_id):
 @login_required
 @role_required("superadmin")
 def budget_exceptions_list():
-    """List semua PR yang perlu budget exception approval (For reference only)"""
-    flash("Budget exception approval is no longer required in this system.", "info")
-    return redirect("/dashboard")
+    """List semua PR yang perlu budget exception approval"""
+    try:
+        with db() as conn:
+            prs = conn.execute("""
+            SELECT p.*, u.full_name as requester_name
+            FROM pr p
+            JOIN users u ON p.created_by = u.id
+            WHERE budget_status = 'OUT_OF_BUDGET' 
+            AND status = 'BUDGET_EXCEPTION_PENDING'
+            ORDER BY p.created_at DESC
+            """).fetchall()
+        
+        return render_template(
+            "budget_exceptions_list.html",
+            prs=prs,
+            BUDGET_STATUS=BUDGET_STATUS
+        )
+        
+    except Exception as e:
+        print(f"⚠️ Budget exceptions list error: {e}")
+        flash("Error loading budget exceptions", "danger")
+        return redirect("/dashboard")
 
 # ==================================================
 # PROCUREMENT - REDIRECT TO DASHBOARD
@@ -1297,14 +1427,14 @@ def procurement_dashboard():
                 SELECT
                     -- PR that procurement should work on (no PO yet)
                     SUM(CASE 
-                        WHEN p.status='SUBMITTED'
+                        WHEN p.status IN ('SUBMITTED','BUDGET_EXCEPTION_PENDING')
                          AND p.id NOT IN (SELECT pr_id FROM po)
                         THEN 1 ELSE 0 
                     END) AS total_submitted,
 
                     -- PR pending PO (same definition)
                     SUM(CASE 
-                        WHEN p.status='SUBMITTED'
+                        WHEN p.status IN ('SUBMITTED','BUDGET_EXCEPTION_PENDING')
                          AND p.id NOT IN (SELECT pr_id FROM po)
                         THEN 1 ELSE 0 
                     END) AS pending_po,
@@ -1333,7 +1463,7 @@ def procurement_dashboard():
             pending_value_row = conn.execute("""
                 SELECT COALESCE(SUM(total_amount), 0) AS total
                 FROM pr
-                WHERE status='SUBMITTED'
+                WHERE status IN ('SUBMITTED','BUDGET_EXCEPTION_PENDING')
                 AND id NOT IN (SELECT pr_id FROM po)
             """).fetchone()
 
@@ -1364,7 +1494,7 @@ def procurement_dashboard():
                     u.full_name as requester_name_full
                 FROM pr p
                 JOIN users u ON p.created_by = u.id
-                WHERE p.status='SUBMITTED'
+                WHERE p.status IN ('SUBMITTED','BUDGET_EXCEPTION_PENDING')
                 AND p.id NOT IN (SELECT pr_id FROM po)
                 ORDER BY p.created_at ASC
                 LIMIT 20
@@ -1443,7 +1573,7 @@ def procurement_dashboard():
             dept_rows = conn.execute("""
                 SELECT department, COUNT(*) as count
                 FROM pr
-                WHERE status='SUBMITTED'
+                WHERE status IN ('SUBMITTED','BUDGET_EXCEPTION_PENDING')
                 AND id NOT IN (SELECT pr_id FROM po)
                 GROUP BY department
                 ORDER BY count DESC
@@ -1507,11 +1637,11 @@ def create_po(pr_id):
             SELECT p.*, u.full_name as requester_name_full
             FROM pr p
             JOIN users u ON p.created_by = u.id
-            WHERE p.id=? AND p.status='SUBMITTED'
+            WHERE p.id=? AND p.status IN ('SUBMITTED', 'BUDGET_EXCEPTION_PENDING')
             """, (pr_id,)).fetchone()
             
             if not pr:
-                flash("PR tidak ditemukan atau belum dalam status SUBMITTED", "danger")
+                flash("PR tidak ditemukan atau belum dalam status SUBMITTED/BUDGET_EXCEPTION_PENDING", "danger")
                 return redirect("/procurement/dashboard")
             
             # Check if PR has quotation - ENFORCE RULE
@@ -1689,7 +1819,7 @@ def po_list():
 @login_required
 def view_po(po_id):
     """
-    View detail PO (accessible by multiple roles) with auto print
+    View detail PO (accessible by multiple roles)
     """
     try:
         with db() as conn:
@@ -1745,14 +1875,10 @@ def view_po(po_id):
                 {"po_no": po['po_no'], "pr_no": po['pr_no']}
             )
             
-            # Check if auto print is requested
-            auto_print = request.args.get("print") == "1"
-            
             return render_template(
                 "procurement_po_view.html",
                 po=po,
-                items=items,
-                auto_print=auto_print
+                items=items
             )
             
     except Exception as e:
@@ -2747,6 +2873,7 @@ with app.app_context():
     try:
         print("🚀 Initializing application...")
         init_db()
+        migrate_pr_columns()
         create_initial_users()
         print("✅ Application initialized successfully")
     except Exception as e:
