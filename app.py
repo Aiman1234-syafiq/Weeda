@@ -2194,32 +2194,22 @@ def global_search():
                 LIMIT 10
             """, (like, like, like)).fetchall()
 
-            like = f"%{query}%"
+            vendors = conn.execute("""
+                SELECT vendor_code, vendor_name
+                FROM vendors
+                WHERE (vendor_code LIKE ? OR vendor_name LIKE ?)
+                  AND is_active=1
+                LIMIT 10
+            """, (like, like)).fetchall()
 
-vendors = conn.execute("""
-SELECT vendor_code, vendor_name 
-FROM vendors 
-WHERE (vendor_code LIKE ? OR vendor_name LIKE ?) 
-AND is_active=1
-LIMIT 20
-""", (like, like)).fetchall()
-
-
-        return jsonify({
-            "prs": [dict(p) for p in prs],
-            "vendors": [dict(v) for v in vendors]
-        })
-    except Exception:
-        return jsonify({"prs": [], "vendors": []})
-
-
-        
         return jsonify({
             "prs": [dict(p) for p in prs],
             "vendors": [dict(v) for v in vendors]
         })
     except Exception as e:
+        print(f"⚠️ Global search error: {e}")
         return jsonify({"prs": [], "vendors": []})
+
 
 @app.route("/api/vendors/search")
 @login_required
@@ -2235,7 +2225,7 @@ def search_vendors():
             WHERE (vendor_code LIKE ? OR vendor_name LIKE ?) 
             AND is_active=1
             LIMIT 20
-            """, (f"%{query}%", f"%{query}%)).fetchall()
+            """, (f"%{query}%", f"%{query}%")).fetchall()
         
         return jsonify([dict(v) for v in vendors])
     except Exception as e:
@@ -2269,28 +2259,27 @@ def get_vendor_details(vendor_code):
 @login_required
 def search_po():
     """Search POs for autocomplete"""
-    query = request.args.get("q", "")
-    
+    query = request.args.get("q", "").strip()
+    like = f"%{query}%"
+
     try:
         with db() as conn:
             pos = conn.execute("""
-            SELECT po_no, pr_no, vendor_name
-            FROM po
-            JOIN pr ON po.pr_id = pr.id
-            WHERE (
-                po_no LIKE ? 
-                OR pr_no LIKE ? 
-                OR vendor_name LIKE ?
-            )
-            AND po.status='ACTIVE'
-            LIMIT 20
-            like = f"%{query}%"
+                SELECT po.po_no, pr.pr_no, po.vendor_name
+                FROM po
+                JOIN pr ON po.pr_id = pr.id
+                WHERE (
+                    po.po_no LIKE ? 
+                    OR pr.pr_no LIKE ? 
+                    OR po.vendor_name LIKE ?
+                )
+                AND po.status='ACTIVE'
+                LIMIT 20
+            """, (like, like, like)).fetchall()
 
-""", (like, like, like)).fetchall()
-
-        
         return jsonify([dict(p) for p in pos])
     except Exception as e:
+        print(f"⚠️ PO search error: {e}")
         return jsonify([])
 
 # ==================================================
