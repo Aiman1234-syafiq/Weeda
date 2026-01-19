@@ -2750,7 +2750,7 @@ def health_check():
         }), 200
     except Exception as e:
         return jsonify({
-            "status": "unhealthy",
+            "status": "unhealthy",comm
             "timestamp": datetime.now().isoformat(),
             "error": str(e)
         }), 500
