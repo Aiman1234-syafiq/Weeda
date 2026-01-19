@@ -2716,18 +2716,19 @@ def internal_error(error):
                          datetime=datetime), 500
 
 # ==================================================
-# RENDER / GUNICORN SAFE STARTUP
+# APPLICATION STARTUP (RENDER / GUNICORN SAFE)
 # ==================================================
-@app.before_request
-def _render_startup_guard():
-    """
-    Initialize DB once per process (Render/Gunicorn safe)
-    """
-    if not getattr(app, "_db_initialized", False):
+with app.app_context():
+    try:
+        print("🚀 Initializing application...")
         init_db()
-        migrate_pr_columns()  # FIX: Migration untuk quotation columns
+        migrate_pr_columns()
         create_initial_users()
-        app._db_initialized = True
+        print("✅ Application initialized successfully")
+    except Exception as e:
+        print(f"❌ Application initialization failed: {e}")
+        # Don't crash on initialization failure
+        # Let the health check endpoint handle it
 
 # ==================================================
 # HEALTH CHECK ENDPOINT
@@ -2757,4 +2758,4 @@ def health_check():
 # ==================================================
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 5000))
-    app.run(host="0.0.0.0", port=port, debug=True)
+    app.run(host="0.0.0.0", port=port)
