@@ -47,62 +47,6 @@ app.config['SESSION_COOKIE_HTTPONLY'] = True
 app.config['PERMANENT_SESSION_LIFETIME'] = 1800
 
 # ==================================================
-# GLOBAL TEMPLATE CONTEXT
-# ==================================================
-@app.context_processor
-def inject_globals():
-    """Inject global variables into all templates"""
-    return {
-        'datetime': datetime,
-        'now': datetime.now,
-        'current_year': datetime.now().year
-    }
-
-# ==================================================
-# CONSTANTS - DIPERMUDAHKAN
-# ==================================================
-BUDGET_STATUS = {
-    'IN_BUDGET': 'IN_BUDGET',
-    'OUT_OF_BUDGET': 'OUT_OF_BUDGET',
-    'EXCEPTION_APPROVED': 'EXCEPTION_APPROVED',
-    'EXCEPTION_PENDING': 'BUDGET_EXCEPTION_PENDING'
-}
-
-PR_STATUS = {
-    'SUBMITTED': 'SUBMITTED',        # User create PR
-    'PO_CREATED': 'PO_CREATED',      # Procurement isi PO
-    'CLOSED': 'CLOSED',              # Selesai
-    'REJECTED': 'REJECTED'           # Ditolak
-}
-
-# ==================================================
-# HELPER FUNCTIONS
-# ==================================================
-def allowed_file(filename):
-    """Check if file extension is allowed"""
-    return '.' in filename and \
-           filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
-
-def save_quotation_file(file, pr_id):
-    """Save quotation file and return filename"""
-    if not file or file.filename == '':
-        return None
-    
-    if not allowed_file(file.filename):
-        raise ValueError("File type not allowed. Allowed: PDF, JPG, PNG, DOC, DOCX")
-    
-    # Generate unique filename with pr_id
-    original_filename = secure_filename(file.filename)
-    file_ext = original_filename.rsplit('.', 1)[1].lower()
-    unique_filename = f"quotation_{pr_id}_{uuid.uuid4().hex[:8]}.{file_ext}"
-    
-    # Save file
-    file_path = os.path.join(QUOTATION_FOLDER, unique_filename)
-    file.save(file_path)
-    
-    return unique_filename
-
-# ==================================================
 # DATABASE CONNECTION MANAGER
 # ==================================================
 thread_local = threading.local()
@@ -270,6 +214,34 @@ def migrate_vendor_columns():
             
     except Exception as e:
         print(f"⚠️ Migration error: {e}")
+
+def migrate_pr_columns():
+    """
+    Migration untuk column quotation_filename dan quotation_uploaded_at
+    """
+    try:
+        with db() as conn:
+            # Check if columns already exist
+            try:
+                conn.execute("""
+                ALTER TABLE pr ADD COLUMN quotation_filename TEXT
+                """)
+                print("✅ Added column: quotation_filename")
+            except sqlite3.OperationalError as e:
+                if "duplicate column name" not in str(e):
+                    raise
+            
+            try:
+                conn.execute("""
+                ALTER TABLE pr ADD COLUMN quotation_uploaded_at TEXT
+                """)
+                print("✅ Added column: quotation_uploaded_at")
+            except sqlite3.OperationalError as e:
+                if "duplicate column name" not in str(e):
+                    raise
+                    
+    except Exception as e:
+        print(f"⚠️ PR columns migration error: {e}")
 
 def init_db():
     """
@@ -500,8 +472,62 @@ def init_db():
         raise
 
 # ==================================================
-# HELPER FUNCTIONS (CONTINUED)
+# GLOBAL TEMPLATE CONTEXT
 # ==================================================
+@app.context_processor
+def inject_globals():
+    """Inject global variables into all templates"""
+    return {
+        'datetime': datetime,
+        'now': datetime.now,
+        'current_year': datetime.now().year,
+        'format_datetime': lambda dt: datetime.fromisoformat(dt).strftime("%d %b %Y %H:%M") if dt else "N/A"
+    }
+
+# ==================================================
+# CONSTANTS - DIPERMUDAHKAN
+# ==================================================
+BUDGET_STATUS = {
+    'IN_BUDGET': 'IN_BUDGET',
+    'OUT_OF_BUDGET': 'OUT_OF_BUDGET',
+    'EXCEPTION_APPROVED': 'EXCEPTION_APPROVED',
+    'EXCEPTION_PENDING': 'BUDGET_EXCEPTION_PENDING'
+}
+
+PR_STATUS = {
+    'SUBMITTED': 'SUBMITTED',        # User create PR
+    'PO_CREATED': 'PO_CREATED',      # Procurement isi PO
+    'CLOSED': 'CLOSED',              # Selesai
+    'REJECTED': 'REJECTED'           # Ditolak
+}
+
+# ==================================================
+# HELPER FUNCTIONS
+# ==================================================
+def allowed_file(filename):
+    """Check if file extension is allowed"""
+    return '.' in filename and \
+           filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
+
+def save_quotation_file(file, pr_id):
+    """Save quotation file and return filename"""
+    if not file or file.filename == '':
+        return None
+    
+    if not allowed_file(file.filename):
+        raise ValueError("File type not allowed. Allowed: PDF, JPG, PNG, DOC, DOCX")
+    
+    # Generate unique filename with pr_id
+    original_filename = secure_filename(file.filename)
+    file_ext = original_filename.rsplit('.', 1)[1].lower()
+    unique_filename = f"quotation_{pr_id}_{uuid.uuid4().hex[:8]}.{file_ext}"
+    
+    # Save file
+    file_path = os.path.join(QUOTATION_FOLDER, unique_filename)
+    file.save(file_path)
+    
+    return unique_filename
+
 def login_required(fn):
     @wraps(fn)
     def wrap(*args, **kwargs):
@@ -649,6 +675,8 @@ def login():
                     session["role"] = user["role"]
                     session["name"] = user["full_name"]
                     session["department"] = user["department"] or ""
+                    session["email"] = user["email"] or ""
+                    session["last_login"] = user["last_login"] or ""
 
                     session.permanent = True
                     
@@ -796,6 +824,13 @@ def dashboard():
                 stats['total_pos'] = conn.execute("SELECT COUNT(*) FROM po").fetchone()[0]
                 stats['total_quotations'] = conn.execute("""
                 SELECT COUNT(*) FROM pr WHERE quotation_filename IS NOT NULL
+                """).fetchone()[0]
+                
+                # Budget exception stats for superadmin
+                stats['pending_budget_exceptions'] = conn.execute("""
+                SELECT COUNT(*) FROM pr 
+                WHERE budget_status = 'OUT_OF_BUDGET' 
+                AND status = 'BUDGET_EXCEPTION_PENDING'
                 """).fetchone()[0]
                 
                 # Get semua PR
@@ -1334,6 +1369,33 @@ def budget_exception_approval(pr_id):
     except Exception as e:
         print(f"⚠️ Budget exception error: {e}")
         flash("Error loading budget exception page", "danger")
+        return redirect("/dashboard")
+
+@app.route("/budget-exceptions")
+@login_required
+@role_required("superadmin")
+def budget_exceptions_list():
+    """List semua PR yang perlu budget exception approval"""
+    try:
+        with db() as conn:
+            prs = conn.execute("""
+            SELECT p.*, u.full_name as requester_name
+            FROM pr p
+            JOIN users u ON p.created_by = u.id
+            WHERE budget_status = 'OUT_OF_BUDGET' 
+            AND status = 'BUDGET_EXCEPTION_PENDING'
+            ORDER BY p.created_at DESC
+            """).fetchall()
+        
+        return render_template(
+            "budget_exceptions_list.html",
+            prs=prs,
+            BUDGET_STATUS=BUDGET_STATUS
+        )
+        
+    except Exception as e:
+        print(f"⚠️ Budget exceptions list error: {e}")
+        flash("Error loading budget exceptions", "danger")
         return redirect("/dashboard")
 
 # ==================================================
@@ -2114,8 +2176,41 @@ def procurement_vendor_form():
     )
 
 # ==================================================
-# VENDOR API ENDPOINTS
+# SEARCH API
 # ==================================================
+@app.route("/api/search")
+@login_required
+def global_search():
+    """Global search endpoint for PRs and vendors"""
+    query = request.args.get("q", "")
+    
+    try:
+        with db() as conn:
+            # Search PRs
+            prs = conn.execute("""
+            SELECT pr_no, purpose, vendor_name, department, status
+            FROM pr 
+            WHERE (pr_no LIKE ? OR purpose LIKE ? OR vendor_name LIKE ?)
+            ORDER BY created_at DESC
+            LIMIT 10
+            """, (f"%{query}%", f"%{query}%", f"%{query}%")).fetchall()
+            
+            # Search vendors
+            vendors = conn.execute("""
+            SELECT vendor_code, vendor_name, vendor_type, contact_person
+            FROM vendors 
+            WHERE (vendor_code LIKE ? OR vendor_name LIKE ? OR contact_person LIKE ?)
+            AND is_active=1
+            LIMIT 10
+            """, (f"%{query}%", f"%{query}%", f"%{query}%")).fetchall()
+        
+        return jsonify({
+            "prs": [dict(p) for p in prs],
+            "vendors": [dict(v) for v in vendors]
+        })
+    except Exception as e:
+        return jsonify({"prs": [], "vendors": []})
+
 @app.route("/api/vendors/search")
 @login_required
 def search_vendors():
@@ -2130,7 +2225,7 @@ def search_vendors():
             WHERE (vendor_code LIKE ? OR vendor_name LIKE ?) 
             AND is_active=1
             LIMIT 20
-            """, (f"%{query}%", f"%{query}%")).fetchall()
+            """, (f"%{query}%", f"%{query}%)).fetchall()
         
         return jsonify([dict(v) for v in vendors])
     except Exception as e:
@@ -2630,6 +2725,7 @@ def _render_startup_guard():
     """
     if not getattr(app, "_db_initialized", False):
         init_db()
+        migrate_pr_columns()  # FIX: Migration untuk quotation columns
         create_initial_users()
         app._db_initialized = True
 
