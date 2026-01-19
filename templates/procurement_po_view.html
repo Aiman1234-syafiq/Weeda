@@ -1,0 +1,401 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>View PO - {{ po.po_no }}</title>
+    
+    <!-- Bootstrap 5 CSS -->
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha1/dist/css/bootstrap.min.css" rel="stylesheet">
+    
+    <!-- Font Awesome -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    
+    <style>
+        @media print {
+            .no-print {
+                display: none !important;
+            }
+            body {
+                font-size: 12px;
+            }
+            .container {
+                max-width: 100% !important;
+                padding: 10px !important;
+            }
+            .card {
+                border: 1px solid #000 !important;
+                box-shadow: none !important;
+            }
+            .table {
+                font-size: 11px;
+            }
+            .po-header {
+                background-color: #f8f9fa !important;
+                -webkit-print-color-adjust: exact;
+                color-adjust: exact;
+            }
+        }
+        
+        .company-header {
+            border-bottom: 2px solid #0d6efd;
+            padding-bottom: 10px;
+            margin-bottom: 20px;
+        }
+        
+        .company-logo {
+            max-height: 80px;
+        }
+        
+        .po-header {
+            background-color: #f8f9fa;
+            border-left: 4px solid #0d6efd;
+            padding: 15px;
+            border-radius: 5px;
+        }
+        
+        .po-title {
+            color: #0d6efd;
+            font-weight: bold;
+        }
+        
+        .section-title {
+            border-bottom: 2px solid #dee2e6;
+            padding-bottom: 5px;
+            margin-bottom: 15px;
+            color: #495057;
+        }
+        
+        .item-table th {
+            background-color: #f8f9fa;
+        }
+        
+        .total-section {
+            background-color: #f8f9fa;
+            border-radius: 5px;
+            padding: 15px;
+        }
+        
+        .signature-section {
+            margin-top: 50px;
+            padding-top: 20px;
+            border-top: 1px dashed #dee2e6;
+        }
+        
+        .signature-line {
+            border-top: 1px solid #000;
+            width: 200px;
+            margin: 0 auto;
+        }
+        
+        .footer-note {
+            font-size: 0.85rem;
+            color: #6c757d;
+            margin-top: 30px;
+            padding-top: 15px;
+            border-top: 1px solid #dee2e6;
+        }
+        
+        .status-badge {
+            font-size: 0.8rem;
+            padding: 4px 10px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container mt-4 mb-5">
+        <!-- Header with Actions -->
+        <div class="row mb-4 no-print">
+            <div class="col-md-6">
+                <nav aria-label="breadcrumb">
+                    <ol class="breadcrumb">
+                        <li class="breadcrumb-item"><a href="/dashboard">Dashboard</a></li>
+                        <li class="breadcrumb-item"><a href="/procurement/po/list">PO List</a></li>
+                        <li class="breadcrumb-item active" aria-current="page">PO {{ po.po_no }}</li>
+                    </ol>
+                </nav>
+            </div>
+            <div class="col-md-6 text-end">
+                <a href="/procurement/po/list" class="btn btn-outline-secondary">
+                    <i class="fas fa-arrow-left"></i> Back to PO List
+                </a>
+                <button onclick="window.print()" class="btn btn-outline-primary">
+                    <i class="fas fa-print"></i> Print
+                </button>
+                {% if session.role in ['procurement', 'superadmin'] %}
+                <a href="/pr/{{ po.pr_id }}" class="btn btn-outline-info">
+                    <i class="fas fa-file-alt"></i> View PR
+                </a>
+                {% endif %}
+            </div>
+        </div>
+
+        <!-- Flash Messages -->
+        {% with messages = get_flashed_messages(with_categories=true) %}
+            {% if messages %}
+                <div class="row mb-3 no-print">
+                    <div class="col-12">
+                        {% for category, message in messages %}
+                            <div class="alert alert-{{ category }} alert-dismissible fade show">
+                                {{ message }}
+                                <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+                            </div>
+                        {% endfor %}
+                    </div>
+                </div>
+            {% endif %}
+        {% endwith %}
+
+        <!-- Company Header -->
+        <div class="row company-header no-print">
+            <div class="col-md-2 text-center">
+                <div class="bg-primary text-white rounded-circle d-inline-flex align-items-center justify-content-center" 
+                     style="width: 70px; height: 70px;">
+                    <i class="fas fa-building fa-2x"></i>
+                </div>
+            </div>
+            <div class="col-md-8 text-center">
+                <h2 class="mb-1">ABC ENTERPRISE SDN BHD</h2>
+                <p class="mb-1">123 Business Street, Kuala Lumpur 50000</p>
+                <p class="mb-1">Tel: 03-1234 5678 | Email: info@abcenterprise.com</p>
+                <p>Registration No: 1234567-X</p>
+            </div>
+            <div class="col-md-2 text-center">
+                <div class="bg-danger text-white rounded p-2">
+                    <h5 class="mb-0">PURCHASE ORDER</h5>
+                </div>
+            </div>
+        </div>
+
+        <!-- Main PO Content -->
+        <div class="card shadow-sm mb-4">
+            <div class="card-body">
+                <!-- PO Header -->
+                <div class="row po-header mb-4">
+                    <div class="col-md-8">
+                        <h2 class="po-title mb-2">PO NO: {{ po.po_no }}</h2>
+                        <p class="mb-1"><strong>PR Reference:</strong> {{ po.pr_no }}</p>
+                        <p class="mb-1"><strong>PO Date:</strong> {{ format_datetime(po.po_date) if po.po_date else 'N/A' }}</p>
+                        <p class="mb-0"><strong>Created:</strong> {{ format_datetime(po.created_at) }}</p>
+                    </div>
+                    <div class="col-md-4 text-end">
+                        <span class="badge bg-success status-badge">ACTIVE</span>
+                        <div class="mt-2">
+                            <p class="mb-1"><strong>Total Amount:</strong></p>
+                            <h3 class="text-primary">MYR {{ "%.2f"|format(po.total_amount|float) }}</h3>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Vendor & Requester Info -->
+                <div class="row mb-4">
+                    <!-- Vendor Information -->
+                    <div class="col-md-6">
+                        <h5 class="section-title">VENDOR INFORMATION</h5>
+                        <table class="table table-sm">
+                            <tr>
+                                <th style="width: 35%">Vendor Name:</th>
+                                <td>{{ po.vendor_name }}</td>
+                            </tr>
+                            {% if po.notes %}
+                            <tr>
+                                <th>Notes:</th>
+                                <td>{{ po.notes }}</td>
+                            </tr>
+                            {% endif %}
+                        </table>
+                    </div>
+
+                    <!-- Requester Information -->
+                    <div class="col-md-6">
+                        <h5 class="section-title">REQUESTER INFORMATION</h5>
+                        <table class="table table-sm">
+                            <tr>
+                                <th style="width: 35%">Requester:</th>
+                                <td>{{ po.requester_name }}</td>
+                            </tr>
+                            <tr>
+                                <th>Department:</th>
+                                <td>{{ po.department }}</td>
+                            </tr>
+                            {% if po.requester_email %}
+                            <tr>
+                                <th>Email:</th>
+                                <td>{{ po.requester_email }}</td>
+                            </tr>
+                            {% endif %}
+                            <tr>
+                                <th>PR Purpose:</th>
+                                <td>{{ po.purpose[:50] }}{% if po.purpose|length > 50 %}...{% endif %}</td>
+                            </tr>
+                        </table>
+                    </div>
+                </div>
+
+                <!-- Items Table -->
+                <h5 class="section-title">PURCHASE ITEMS</h5>
+                <div class="table-responsive mb-4">
+                    <table class="table table-bordered item-table">
+                        <thead class="table-light">
+                            <tr>
+                                <th class="text-center">#</th>
+                                <th>Description</th>
+                                <th class="text-center">Qty</th>
+                                <th class="text-center">UOM</th>
+                                <th class="text-end">Unit Price (MYR)</th>
+                                <th class="text-end">Total Price (MYR)</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for item in items %}
+                            <tr>
+                                <td class="text-center">{{ loop.index }}</td>
+                                <td>{{ item.item_description }}</td>
+                                <td class="text-center">{{ item.quantity }}</td>
+                                <td class="text-center">{{ item.unit_of_measure }}</td>
+                                <td class="text-end">{{ "%.2f"|format(item.unit_price|float) }}</td>
+                                <td class="text-end">{{ "%.2f"|format(item.total_price|float) }}</td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                        <tfoot class="table-light">
+                            <tr>
+                                <td colspan="5" class="text-end"><strong>Total Amount:</strong></td>
+                                <td class="text-end"><strong>MYR {{ "%.2f"|format(po.total_amount|float) }}</strong></td>
+                            </tr>
+                        </tfoot>
+                    </table>
+                </div>
+
+                <!-- Terms & Conditions -->
+                <div class="row mb-4">
+                    <div class="col-12">
+                        <h5 class="section-title">TERMS & CONDITIONS</h5>
+                        <div class="row">
+                            <div class="col-md-6">
+                                <h6>Delivery Terms:</h6>
+                                <ul class="small">
+                                    <li>Delivery must be made within 30 days from PO date</li>
+                                    <li>All goods must be properly packed and labeled</li>
+                                    <li>Delivery note must accompany all deliveries</li>
+                                </ul>
+                            </div>
+                            <div class="col-md-6">
+                                <h6>Payment Terms:</h6>
+                                <ul class="small">
+                                    <li>Payment within 30 days upon receipt of invoice</li>
+                                    <li>Invoice must reference this PO number</li>
+                                    <li>Payment subject to goods acceptance</li>
+                                </ul>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Signatures Section -->
+                <div class="row signature-section">
+                    <div class="col-md-4 text-center">
+                        <p><strong>Prepared By:</strong></p>
+                        <div class="signature-line mt-4 mb-2"></div>
+                        <p class="mb-1">{{ po.po_creator_name or 'Procurement Officer' }}</p>
+                        <p class="small text-muted">Procurement Department</p>
+                        <p class="small">Date: {{ format_datetime(po.created_at) if po.created_at else 'N/A' }}</p>
+                    </div>
+                    <div class="col-md-4 text-center">
+                        <p><strong>Approved By:</strong></p>
+                        <div class="signature-line mt-4 mb-2"></div>
+                        <p class="small text-muted">Authorized Signatory</p>
+                        <p class="small">Date: ___________________</p>
+                    </div>
+                    <div class="col-md-4 text-center">
+                        <p><strong>Received By (Vendor):</strong></p>
+                        <div class="signature-line mt-4 mb-2"></div>
+                        <p class="small text-muted">Vendor Representative</p>
+                        <p class="small">Date: ___________________</p>
+                    </div>
+                </div>
+
+                <!-- Footer Notes -->
+                <div class="footer-note">
+                    <p class="mb-1"><strong>IMPORTANT:</strong> This is a computer generated document. No signature is required.</p>
+                    <p class="mb-1">For any queries regarding this PO, please contact Procurement Department.</p>
+                    <p class="mb-0">Generated on: {{ now().strftime('%d %B %Y %H:%M') }}</p>
+                </div>
+            </div>
+        </div>
+
+        <!-- Action Buttons -->
+        <div class="row no-print">
+            <div class="col-12 text-center">
+                <div class="btn-group" role="group">
+                    <button onclick="window.print()" class="btn btn-primary">
+                        <i class="fas fa-print"></i> Print PO
+                    </button>
+                    {% if po.quotation_filename %}
+                    <a href="/pr/{{ po.pr_id }}/quotation" class="btn btn-outline-info">
+                        <i class="fas fa-file-pdf"></i> Download Quotation
+                    </a>
+                    {% endif %}
+                    {% if session.role in ['procurement', 'superadmin'] %}
+                    <a href="/procurement/po/list" class="btn btn-outline-secondary">
+                        <i class="fas fa-list"></i> Back to List
+                    </a>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Bootstrap JS -->
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha1/dist/js/bootstrap.bundle.min.js"></script>
+    
+    <!-- Auto Print Script -->
+    {% if auto_print %}
+    <script>
+        window.onload = function() {
+            // Small delay to ensure page is fully loaded
+            setTimeout(function() {
+                window.print();
+                
+                // Optional: Redirect back after print
+                setTimeout(function() {
+                    // Check if print dialog is closed (not 100% reliable)
+                    window.onfocus = function() {
+                        // You can optionally redirect back to PO list
+                        // window.location.href = '/procurement/po/list';
+                    };
+                }, 1000);
+            }, 500);
+        };
+        
+        // Alternative method for modern browsers
+        window.addEventListener('afterprint', function(event) {
+            console.log('Print dialog closed');
+            // Optional: Show message or redirect
+        });
+    </script>
+    {% endif %}
+    
+    <!-- General JavaScript -->
+    <script>
+        // Add page break for printing
+        function addPageBreak() {
+            var style = document.createElement('style');
+            style.innerHTML = '@media print { .page-break { page-break-before: always; } }';
+            document.head.appendChild(style);
+        }
+        
+        // Initialize when page loads
+        document.addEventListener('DOMContentLoaded', function() {
+            addPageBreak();
+            
+            // Set print button behavior
+            document.querySelectorAll('.btn-print').forEach(function(button) {
+                button.addEventListener('click', function() {
+                    window.print();
+                });
+            });
+        });
+    </script>
+</body>
+</html>
