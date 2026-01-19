@@ -1,0 +1,151 @@
+{% extends "base.html" %}
+
+{% block title %}Create PO - Procurement{% endblock %}
+
+{% block content %}
+<div class="container-fluid">
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <h1><i class="fas fa-file-invoice-dollar me-2"></i>Create Purchase Order</h1>
+        <a href="/procurement" class="btn btn-outline-secondary">
+            <i class="fas fa-arrow-left me-1"></i>Back to Procurement
+        </a>
+    </div>
+
+    <!-- PR Summary Card -->
+    <div class="card mb-4">
+        <div class="card-header bg-info text-white">
+            <h5 class="mb-0"><i class="fas fa-file-alt me-2"></i>PR Summary</h5>
+        </div>
+        <div class="card-body">
+            <div class="row">
+                <div class="col-md-3">
+                    <strong>PR Number:</strong><br>
+                    <span class="text-primary fw-bold">{{ pr.pr_no }}</span>
+                </div>
+                <div class="col-md-3">
+                    <strong>Department:</strong><br>
+                    {{ pr.department }}
+                </div>
+                <div class="col-md-3">
+                    <strong>Requester:</strong><br>
+                    {{ pr.requester_name_full }}
+                </div>
+                <div class="col-md-3">
+                    <strong>Total Amount:</strong><br>
+                    <span class="text-success fw-bold">RM {{ "%.2f"|format(pr.total_amount) }}</span>
+                </div>
+            </div>
+            <div class="row mt-2">
+                <div class="col-md-6">
+                    <strong>Vendor:</strong><br>
+                    {{ pr.vendor_name }}
+                </div>
+                <div class="col-md-6">
+                    <strong>Purpose:</strong><br>
+                    {{ pr.purpose[:100] }}{% if pr.purpose|length > 100 %}...{% endif %}
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- PO Form Card -->
+    <div class="card">
+        <div class="card-header bg-primary text-white">
+            <h5 class="mb-0"><i class="fas fa-edit me-2"></i>Enter PO Details</h5>
+        </div>
+        <div class="card-body">
+            <form method="POST" action="/procurement/po/new/{{ pr.id }}">
+                <div class="row mb-3">
+                    <div class="col-md-6">
+                        <label for="po_no" class="form-label required">PO Number</label>
+                        <input type="text" class="form-control" id="po_no" name="po_no" 
+                               placeholder="e.g., PO-2024-001" required>
+                        <div class="form-text">Enter the official PO number from your system</div>
+                    </div>
+                    <div class="col-md-6">
+                        <label for="po_date" class="form-label required">PO Date</label>
+                        <input type="date" class="form-control" id="po_date" name="po_date" 
+                               value="{{ default_date }}" required>
+                    </div>
+                </div>
+
+                <div class="row mb-3">
+                    <div class="col-md-6">
+                        <label class="form-label">Vendor</label>
+                        <input type="text" class="form-control" value="{{ pr.vendor_name }}" readonly>
+                    </div>
+                    <div class="col-md-6">
+                        <label class="form-label">Total Amount</label>
+                        <div class="input-group">
+                            <span class="input-group-text">RM</span>
+                            <input type="text" class="form-control" 
+                                   value="{{ "%.2f"|format(pr.total_amount) }}" readonly>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="row mb-4">
+                    <div class="col-12">
+                        <label for="notes" class="form-label">Additional Notes (Optional)</label>
+                        <textarea class="form-control" id="notes" name="notes" rows="3" 
+                                  placeholder="Any additional notes for this PO..."></textarea>
+                    </div>
+                </div>
+
+                <!-- PR Items Preview -->
+                <div class="mb-4">
+                    <h6 class="border-bottom pb-2"><i class="fas fa-list-alt me-2"></i>PR Items</h6>
+                    <div class="table-responsive">
+                        <table class="table table-sm table-hover">
+                            <thead class="table-light">
+                                <tr>
+                                    <th>#</th>
+                                    <th>Description</th>
+                                    <th class="text-end">Qty</th>
+                                    <th class="text-end">Unit Price</th>
+                                    <th class="text-end">Total</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for item in items %}
+                                <tr>
+                                    <td>{{ item.item_no }}</td>
+                                    <td>{{ item.item_description }}</td>
+                                    <td class="text-end">{{ item.quantity }} {{ item.unit_of_measure }}</td>
+                                    <td class="text-end">RM {{ "%.2f"|format(item.unit_price) }}</td>
+                                    <td class="text-end">RM {{ "%.2f"|format(item.total_price) }}</td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                            <tfoot class="table-group-divider">
+                                <tr>
+                                    <td colspan="4" class="text-end fw-bold">Grand Total:</td>
+                                    <td class="text-end fw-bold text-success">
+                                        RM {{ "%.2f"|format(pr.total_amount) }}
+                                    </td>
+                                </tr>
+                            </tfoot>
+                        </table>
+                    </div>
+                </div>
+
+                <div class="d-grid gap-2 d-md-flex justify-content-md-end">
+                    <a href="/procurement" class="btn btn-secondary me-md-2">
+                        <i class="fas fa-times me-1"></i>Cancel
+                    </a>
+                    <button type="submit" class="btn btn-success">
+                        <i class="fas fa-check me-1"></i>Create PO
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<style>
+.required:after {
+    content: " *";
+    color: #dc3545;
+}
+</style>
+{% endblock %}

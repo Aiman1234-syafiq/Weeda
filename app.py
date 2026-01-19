@@ -2,15 +2,17 @@ import os
 import sqlite3
 import threading
 import time
+import uuid
 from datetime import datetime
-from decimal import Decimal
 import json
 from functools import wraps
 from contextlib import contextmanager
+from werkzeug.utils import secure_filename
 
 from flask import (
     Flask, render_template, request, redirect,
-    url_for, session, abort, flash, jsonify
+    url_for, session, abort, flash, jsonify,
+    send_from_directory
 )
 from werkzeug.security import generate_password_hash, check_password_hash
 
@@ -20,11 +22,24 @@ from werkzeug.security import generate_password_hash, check_password_hash
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 DB_PATH = os.environ.get("DB_PATH", os.path.join(BASE_DIR, "pr_enterprise.db"))
 
+# File upload config
+UPLOAD_FOLDER = os.path.join(BASE_DIR, 'uploads')
+QUOTATION_FOLDER = os.path.join(UPLOAD_FOLDER, 'quotations')
+ALLOWED_EXTENSIONS = {'pdf', 'jpg', 'jpeg', 'png', 'doc', 'docx'}
+MAX_FILE_SIZE = 10 * 1024 * 1024  # 10MB
+
+# Create upload folders if not exist
+os.makedirs(QUOTATION_FOLDER, exist_ok=True)
+
 app = Flask(__name__)
 app.secret_key = os.environ.get(
     "SECRET_KEY",
     "change-this-in-production-32-char-secret"
 )
+
+# Upload config
+app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
+app.config['MAX_CONTENT_LENGTH'] = MAX_FILE_SIZE
 
 # SESSION CONFIG (DEV SAFE)
 app.config['SESSION_COOKIE_SECURE'] = os.environ.get("SESSION_COOKIE_SECURE", "false").lower() == "true"
@@ -44,20 +59,48 @@ def inject_globals():
     }
 
 # ==================================================
-# CONSTANTS BERDASARKAN FLOWCHART
+# CONSTANTS - DIPERMUDAHKAN
 # ==================================================
-APPROVAL_THRESHOLDS = {
-    'LEVEL_1': 10000,      # Approver 1: Division Head/Director
-    'LEVEL_2': 50000,      # Approver 2: Group CFO → Approver 3: Group CEO
-    'LEVEL_3': 100000,     # Approver 4: Group MD
-}
-
 BUDGET_STATUS = {
     'IN_BUDGET': 'IN_BUDGET',
     'OUT_OF_BUDGET': 'OUT_OF_BUDGET',
     'EXCEPTION_APPROVED': 'EXCEPTION_APPROVED',
     'EXCEPTION_PENDING': 'BUDGET_EXCEPTION_PENDING'
 }
+
+PR_STATUS = {
+    'SUBMITTED': 'SUBMITTED',        # User create PR
+    'PO_CREATED': 'PO_CREATED',      # Procurement isi PO
+    'CLOSED': 'CLOSED',              # Selesai
+    'REJECTED': 'REJECTED'           # Ditolak
+}
+
+# ==================================================
+# HELPER FUNCTIONS
+# ==================================================
+def allowed_file(filename):
+    """Check if file extension is allowed"""
+    return '.' in filename and \
+           filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
+
+def save_quotation_file(file, pr_id):
+    """Save quotation file and return filename"""
+    if not file or file.filename == '':
+        return None
+    
+    if not allowed_file(file.filename):
+        raise ValueError("File type not allowed. Allowed: PDF, JPG, PNG, DOC, DOCX")
+    
+    # Generate unique filename with pr_id
+    original_filename = secure_filename(file.filename)
+    file_ext = original_filename.rsplit('.', 1)[1].lower()
+    unique_filename = f"quotation_{pr_id}_{uuid.uuid4().hex[:8]}.{file_ext}"
+    
+    # Save file
+    file_path = os.path.join(QUOTATION_FOLDER, unique_filename)
+    file.save(file_path)
+    
+    return unique_filename
 
 # ==================================================
 # DATABASE CONNECTION MANAGER
@@ -134,6 +177,69 @@ def close_db_connections():
 # ==================================================
 # DATABASE INITIALIZATION & MIGRATION
 # ==================================================
+def migrate_po_table():
+    """
+    Create PO table for tracking PO numbers from procurement
+    """
+    try:
+        with db() as conn:
+            # Create PO table
+            conn.execute("""
+            CREATE TABLE IF NOT EXISTS po (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                pr_id INTEGER NOT NULL UNIQUE,
+                po_no TEXT NOT NULL UNIQUE,
+                po_date TEXT NOT NULL,
+                vendor_name TEXT,
+                total_amount REAL,
+                created_by INTEGER,
+                created_at TEXT,
+                status TEXT DEFAULT 'ACTIVE',
+                notes TEXT,
+                FOREIGN KEY (pr_id) REFERENCES pr(id) ON DELETE CASCADE
+            )
+            """)
+            
+            # Create index untuk performance
+            conn.execute("CREATE INDEX IF NOT EXISTS idx_po_pr_id ON po(pr_id)")
+            conn.execute("CREATE INDEX IF NOT EXISTS idx_po_number ON po(po_no)")
+            conn.execute("CREATE INDEX IF NOT EXISTS idx_po_date ON po(po_date)")
+            
+            print("✅ PO table created successfully")
+            
+    except Exception as e:
+        print(f"⚠️ PO table migration error: {e}")
+
+def migrate_quotation_table():
+    """
+    Create quotation table for storing uploaded quotation files
+    """
+    try:
+        with db() as conn:
+            # Create quotation table
+            conn.execute("""
+            CREATE TABLE IF NOT EXISTS pr_quotation (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                pr_id INTEGER NOT NULL,
+                filename TEXT NOT NULL,
+                file_path TEXT NOT NULL,
+                uploaded_by INTEGER NOT NULL,
+                uploaded_at TEXT NOT NULL,
+                file_size INTEGER,
+                mime_type TEXT,
+                FOREIGN KEY (pr_id) REFERENCES pr(id) ON DELETE CASCADE,
+                FOREIGN KEY (uploaded_by) REFERENCES users(id)
+            )
+            """)
+            
+            # Create index
+            conn.execute("CREATE INDEX IF NOT EXISTS idx_quotation_pr_id ON pr_quotation(pr_id)")
+            
+            print("✅ Quotation table created successfully")
+            
+    except Exception as e:
+        print(f"⚠️ Quotation table migration error: {e}")
+
 def migrate_vendor_columns():
     """
     Add additional columns to vendors table if they don't exist
@@ -212,7 +318,7 @@ def init_db():
         )
         """)
         
-        # PR
+        # PR - DIPERMUDAHKAN (NO APPROVAL SYSTEM)
         conn.execute("""
         CREATE TABLE IF NOT EXISTS pr (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -251,42 +357,19 @@ def init_db():
             tax_amount REAL DEFAULT 0,
             grand_total REAL GENERATED ALWAYS AS (total_amount + tax_amount) VIRTUAL,
             
-            -- Status & Approval
-            status TEXT NOT NULL,
-            current_approver_role TEXT,
+            -- Status - DIPERMUDAHKAN
+            status TEXT DEFAULT 'SUBMITTED',
             
-            -- Approval Status Tracking
-            approver1_id INTEGER,
-            approver1_status TEXT DEFAULT 'PENDING',
-            approver1_date TEXT,
-            approver1_notes TEXT,
-            
-            approver2_id INTEGER,
-            approver2_status TEXT DEFAULT 'PENDING',
-            approver2_date TEXT,
-            approver2_notes TEXT,
-            
-            approver3_id INTEGER,
-            approver3_status TEXT DEFAULT 'PENDING',
-            approver3_date TEXT,
-            approver3_notes TEXT,
-            
-            approver4_id INTEGER,
-            approver4_status TEXT DEFAULT 'PENDING',
-            approver4_date TEXT,
-            approver4_notes TEXT,
-            
-            -- Requestor Sign-off
-            requestor_signoff_date TEXT,
-            requestor_signoff_user INTEGER,
-            
-            -- Procurement
+            -- Procurement (optional)
             procurement_received_date TEXT,
             procurement_officer_id INTEGER,
             
             -- Audit Trail
             last_updated TEXT NOT NULL,
-            rejection_reason TEXT,
+            
+            -- Quotation (link to uploaded file)
+            quotation_filename TEXT,
+            quotation_uploaded_at TEXT,
             
             FOREIGN KEY (created_by) REFERENCES users(id),
             FOREIGN KEY (budget_exception_approver) REFERENCES users(id)
@@ -311,19 +394,17 @@ def init_db():
         )
         """)
         
-        # APPROVAL HISTORY
+        # APPROVAL HISTORY - DISIMPAN TAPI TAK DIGUNAKAN
         conn.execute("""
         CREATE TABLE IF NOT EXISTS approval_history (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             pr_id INTEGER NOT NULL,
-            approver_role TEXT NOT NULL,
-            approver_id INTEGER,
             action TEXT NOT NULL,
             action_date TEXT NOT NULL,
             comments TEXT,
             ip_address TEXT,
-            FOREIGN KEY (pr_id) REFERENCES pr(id),
-            FOREIGN KEY (approver_id) REFERENCES users(id)
+            user_agent TEXT,
+            FOREIGN KEY (pr_id) REFERENCES pr(id)
         )
         """)
         
@@ -373,6 +454,22 @@ def init_db():
         )
         """)
         
+        # AUDIT LOG - untuk production tracking
+        conn.execute("""
+        CREATE TABLE IF NOT EXISTS audit_log (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            timestamp TEXT NOT NULL,
+            user_id INTEGER,
+            action TEXT NOT NULL,
+            entity_type TEXT,
+            entity_id INTEGER,
+            ip_address TEXT,
+            user_agent TEXT,
+            details TEXT,
+            FOREIGN KEY (user_id) REFERENCES users(id)
+        )
+        """)
+        
         # INSERT DEFAULT BUDGET DATA
         current_year = datetime.now().year
         budgets = [
@@ -395,13 +492,15 @@ def init_db():
         
         # Run migration untuk kolom tambahan
         migrate_vendor_columns()
+        migrate_po_table()
+        migrate_quotation_table()
         
     except Exception as e:
         print(f"❌ Error initializing database: {e}")
         raise
 
 # ==================================================
-# HELPER FUNCTIONS
+# HELPER FUNCTIONS (CONTINUED)
 # ==================================================
 def login_required(fn):
     @wraps(fn)
@@ -467,17 +566,6 @@ def check_budget_availability(department, category, amount, fiscal_year):
     except Exception as e:
         return {'available': False, 'remaining': 0, 'message': f'Error checking budget: {str(e)}'}
 
-def get_approval_path(amount, budget_status):
-    if budget_status == BUDGET_STATUS['OUT_OF_BUDGET']:
-        return ['approver1']
-    
-    if amount <= APPROVAL_THRESHOLDS['LEVEL_1']:
-        return ['approver1']
-    elif amount <= APPROVAL_THRESHOLDS['LEVEL_2']:
-        return ['approver2', 'approver3']
-    else:
-        return ['approver4']
-
 def create_notification(user_id, title, message, notif_type='INFO', pr_id=None):
     """Buat notifikasi untuk user"""
     try:
@@ -493,25 +581,45 @@ def create_notification(user_id, title, message, notif_type='INFO', pr_id=None):
     except Exception as e:
         print(f"⚠️ Failed to create notification: {e}")
 
-def log_approval_action(pr_id, action, comments='', approver_id=None):
-    """Log setiap action approval"""
+def log_action(pr_id, action, comments='', user_id=None):
+    """Log setiap action"""
     try:
         with db() as conn:
             conn.execute("""
             INSERT INTO approval_history 
-            (pr_id, approver_role, approver_id, action, action_date, comments, ip_address)
-            VALUES (?, ?, ?, ?, ?, ?, ?)
+            (pr_id, action, action_date, comments, ip_address, user_agent)
+            VALUES (?, ?, ?, ?, ?, ?)
             """, (
                 pr_id,
-                session.get('role'),
-                approver_id or session.get('user_id'),
                 action,
                 datetime.now().isoformat(),
                 comments,
-                request.remote_addr if request else 'N/A'
+                request.remote_addr if request else 'N/A',
+                request.headers.get('User-Agent') if request else 'N/A'
             ))
     except Exception as e:
-        print(f"⚠️ Failed to log approval action: {e}")
+        print(f"⚠️ Failed to log action: {e}")
+
+def audit_log(user_id, action, entity_type=None, entity_id=None, details=None):
+    """Create audit log for production tracking"""
+    try:
+        with db() as conn:
+            conn.execute("""
+            INSERT INTO audit_log 
+            (timestamp, user_id, action, entity_type, entity_id, ip_address, user_agent, details)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            """, (
+                datetime.now().isoformat(),
+                user_id,
+                action,
+                entity_type,
+                entity_id,
+                request.remote_addr if request else 'N/A',
+                request.headers.get('User-Agent') if request else 'N/A',
+                json.dumps(details) if details else None
+            ))
+    except Exception as e:
+        print(f"⚠️ Failed to create audit log: {e}")
 
 # ==================================================
 # AUTHENTICATION
@@ -552,8 +660,24 @@ def login():
                         "SUCCESS"
                     )
                     
+                    # Audit log
+                    audit_log(
+                        user["id"],
+                        "LOGIN",
+                        "user",
+                        user["id"],
+                        {"username": username, "ip": request.remote_addr}
+                    )
+                    
                     flash("Login successful!", "success")
                     return redirect("/dashboard")
+            
+            # Audit log failed login
+            audit_log(
+                None,
+                "LOGIN_FAILED",
+                details={"username": username, "ip": request.remote_addr}
+            )
             
             flash("Invalid username or password", "danger")
             
@@ -565,12 +689,20 @@ def login():
 
 @app.route("/logout")
 def logout():
+    # Audit log
+    audit_log(
+        session.get("user_id"),
+        "LOGOUT",
+        "user",
+        session.get("user_id")
+    )
+    
     session.clear()
     flash("Logged out successfully", "info")
     return redirect("/")
 
 # ==================================================
-# DASHBOARD
+# DASHBOARD - UPDATED DENGAN PO LOGIC
 # ==================================================
 @app.route("/dashboard")
 @login_required
@@ -594,67 +726,64 @@ def dashboard():
             my_pr = []
             
             if role == "user":
-                # User's PR statistics
+                # User's PR statistics - HANYA YANG BELUM ADA PO
                 stats['total_pr'] = conn.execute("""
                 SELECT COUNT(*) FROM pr WHERE created_by=?
+                AND id NOT IN (SELECT pr_id FROM po)
                 """, (user_id,)).fetchone()[0]
                 
-                stats['pending_pr'] = conn.execute("""
+                stats['po_created'] = conn.execute("""
+                SELECT COUNT(*) FROM po 
+                WHERE pr_id IN (SELECT id FROM pr WHERE created_by=?)
+                """, (user_id,)).fetchone()[0]
+                
+                stats['with_quotation'] = conn.execute("""
                 SELECT COUNT(*) FROM pr 
-                WHERE created_by=? AND status IN ('PENDING_APPROVAL', 'BUDGET_EXCEPTION_PENDING')
+                WHERE created_by=? AND quotation_filename IS NOT NULL
                 """, (user_id,)).fetchone()[0]
                 
-                stats['approved_pr'] = conn.execute("""
-                SELECT COUNT(*) FROM pr 
-                WHERE created_by=? AND status='APPROVED'
-                """, (user_id,)).fetchone()[0]
-                
-                # Get user's PRs
+                # Get user's PRs - HANYA YANG BELUM ADA PO
                 my_pr = conn.execute("""
                 SELECT p.*, 
                        (SELECT COUNT(*) FROM pr_items WHERE pr_id=p.id) as item_count
                 FROM pr p
                 WHERE p.created_by=?
+                AND p.id NOT IN (SELECT pr_id FROM po)
                 ORDER BY p.created_at DESC
                 LIMIT 10
                 """, (user_id,)).fetchall()
             
-            elif role in ['approver1', 'approver2', 'approver3', 'approver4']:
-                # Approver's pending count
-                stats['pending_approvals'] = conn.execute("""
-                SELECT COUNT(*) FROM pr
-                WHERE status='PENDING_APPROVAL' 
-                AND current_approver_role=?
-                """, (role,)).fetchone()[0]
-                
-                # Get PRs pending approval
-                my_pr = conn.execute("""
-                SELECT p.*, u.full_name as requester_name_full
-                FROM pr p
-                JOIN users u ON p.created_by = u.id
-                WHERE p.status='PENDING_APPROVAL' 
-                AND p.current_approver_role=?
-                ORDER BY p.created_at DESC
-                LIMIT 10
-                """, (role,)).fetchall()
-            
             elif role == 'procurement':
                 # Procurement dashboard
-                stats['total_approved'] = conn.execute("""
-                SELECT COUNT(*) FROM pr WHERE status='APPROVED'
+                stats['total_submitted'] = conn.execute("""
+                SELECT COUNT(*) FROM pr WHERE status IN ('SUBMITTED', 'BUDGET_EXCEPTION_PENDING')
+                AND id NOT IN (SELECT pr_id FROM po)
                 """).fetchone()[0]
                 
-                stats['received_count'] = conn.execute("""
-                SELECT COUNT(*) FROM pr WHERE procurement_received_date IS NOT NULL
+                stats['total_po'] = conn.execute("""
+                SELECT COUNT(*) FROM po
                 """).fetchone()[0]
                 
-                stats['pending_receipt'] = stats['total_approved'] - stats['received_count']
+                stats['pending_po'] = conn.execute("""
+                SELECT COUNT(*) FROM pr 
+                WHERE status IN ('SUBMITTED', 'BUDGET_EXCEPTION_PENDING')
+                AND id NOT IN (SELECT pr_id FROM po)
+                """).fetchone()[0]
                 
+                stats['without_quotation'] = conn.execute("""
+                SELECT COUNT(*) FROM pr 
+                WHERE status IN ('SUBMITTED', 'BUDGET_EXCEPTION_PENDING')
+                AND quotation_filename IS NULL
+                AND id NOT IN (SELECT pr_id FROM po)
+                """).fetchone()[0]
+                
+                # Get PRs yang belum ada PO untuk procurement
                 my_pr = conn.execute("""
                 SELECT p.*, u.full_name as requester_name_full
                 FROM pr p
                 JOIN users u ON p.created_by = u.id
-                WHERE p.status='APPROVED'
+                WHERE p.status IN ('SUBMITTED', 'BUDGET_EXCEPTION_PENDING')
+                AND p.id NOT IN (SELECT pr_id FROM po)
                 ORDER BY p.created_at DESC
                 LIMIT 10
                 """).fetchall()
@@ -664,7 +793,12 @@ def dashboard():
                 stats['total_users'] = conn.execute("SELECT COUNT(*) FROM users").fetchone()[0]
                 stats['total_prs'] = conn.execute("SELECT COUNT(*) FROM pr").fetchone()[0]
                 stats['total_vendors'] = conn.execute("SELECT COUNT(*) FROM vendors").fetchone()[0]
+                stats['total_pos'] = conn.execute("SELECT COUNT(*) FROM po").fetchone()[0]
+                stats['total_quotations'] = conn.execute("""
+                SELECT COUNT(*) FROM pr WHERE quotation_filename IS NOT NULL
+                """).fetchone()[0]
                 
+                # Get semua PR
                 my_pr = conn.execute("""
                 SELECT p.*, u.full_name as requester_name_full
                 FROM pr p
@@ -683,6 +817,13 @@ def dashboard():
                 AND fiscal_year=?
                 """, (department, str(datetime.now().year))).fetchall()
         
+        # Audit log
+        audit_log(
+            user_id,
+            "VIEW_DASHBOARD",
+            details={"role": role}
+        )
+        
         return render_template(
             "dashboard.html",
             role=role,
@@ -700,7 +841,7 @@ def dashboard():
         return redirect("/")
 
 # ==================================================
-# CREATE PR
+# CREATE PR - DENGAN QUOTATION UPLOAD (FIXED)
 # ==================================================
 @app.route("/pr/new", methods=["GET", "POST"])
 @login_required
@@ -708,6 +849,17 @@ def dashboard():
 def pr_new():
     if request.method == "POST":
         try:
+            # Check quotation file
+            if 'quotation' not in request.files:
+                flash("Quotation file is required", "danger")
+                return redirect("/pr/new")
+            
+            quotation_file = request.files['quotation']
+            
+            if quotation_file.filename == '':
+                flash("No quotation file selected", "danger")
+                return redirect("/pr/new")
+            
             # Parse form data
             department = request.form["department"]
             budget_category = request.form.get("budget_category")
@@ -715,6 +867,10 @@ def pr_new():
             
             # Parse items from JSON
             items = json.loads(request.form.get("items", "[]"))
+            
+            if len(items) == 0:
+                flash("At least one item is required", "danger")
+                return redirect("/pr/new")
             
             # Calculate totals
             total_amount = sum(float(item.get('total_price', 0)) for item in items)
@@ -729,13 +885,15 @@ def pr_new():
             # Generate PR number
             pr_no = generate_pr_no(department)
             
-            # Determine initial status based on budget check
+            # Determine initial status
+            initial_status = "SUBMITTED"  # SELALU SUBMITTED (tanpa approval)
+            
+            # Budget status
             if budget_check and budget_check['available']:
-                initial_status = "DRAFT"
                 budget_status = BUDGET_STATUS['IN_BUDGET']
             else:
-                initial_status = "BUDGET_EXCEPTION_PENDING"
                 budget_status = BUDGET_STATUS['OUT_OF_BUDGET']
+                initial_status = "BUDGET_EXCEPTION_PENDING"
             
             with db() as conn:
                 # Validate vendor code if provided
@@ -750,7 +908,7 @@ def pr_new():
                         flash("Invalid or inactive vendor code", "danger")
                         return redirect("/pr/new")
                 
-                # Insert PR header
+                # Insert PR header TANPA quotation dulu
                 cursor = conn.execute("""
                 INSERT INTO pr (
                     pr_no, fiscal_year,
@@ -760,9 +918,9 @@ def pr_new():
                     purpose, priority,
                     vendor_name, vendor_code, vendor_contact,
                     total_amount, currency, tax_amount,
-                    status, current_approver_role,
-                    last_updated
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    status, last_updated,
+                    quotation_filename, quotation_uploaded_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, NULL)
                 """, (
                     pr_no, fiscal_year,
                     datetime.now().isoformat(), session["user_id"],
@@ -773,11 +931,37 @@ def pr_new():
                     request.form.get("vendor_contact"),
                     total_amount, request.form.get("currency", "MYR"),
                     float(request.form.get("tax_amount", 0)),
-                    initial_status, "",
+                    initial_status,
                     datetime.now().isoformat()
                 ))
                 
                 pr_id = cursor.lastrowid
+                
+                # SIMPAN FILE QUOTATION SELEPAS DAPAT pr_id
+                try:
+                    quotation_filename = save_quotation_file(quotation_file, pr_id)
+                    
+                    if not quotation_filename:
+                        flash("Failed to save quotation file", "danger")
+                        # Rollback PR creation
+                        conn.execute("DELETE FROM pr WHERE id=?", (pr_id,))
+                        return redirect("/pr/new")
+                except ValueError as e:
+                    flash(str(e), "danger")
+                    conn.execute("DELETE FROM pr WHERE id=?", (pr_id,))
+                    return redirect("/pr/new")
+                
+                # Update PR dengan quotation filename
+                conn.execute("""
+                UPDATE pr SET 
+                    quotation_filename=?,
+                    quotation_uploaded_at=?
+                WHERE id=?
+                """, (
+                    quotation_filename,
+                    datetime.now().isoformat(),
+                    pr_id
+                ))
                 
                 # Insert PR items
                 for idx, item in enumerate(items, 1):
@@ -795,6 +979,23 @@ def pr_new():
                         item.get('notes')
                     ))
                 
+                # Save quotation record dengan relative path
+                conn.execute("""
+                INSERT INTO pr_quotation (
+                    pr_id, filename, file_path,
+                    uploaded_by, uploaded_at,
+                    file_size, mime_type
+                ) VALUES (?, ?, ?, ?, ?, ?, ?)
+                """, (
+                    pr_id,
+                    quotation_filename,
+                    f"quotations/{quotation_filename}",  # Relative path
+                    session["user_id"],
+                    datetime.now().isoformat(),
+                    os.path.getsize(os.path.join(QUOTATION_FOLDER, quotation_filename)),
+                    quotation_file.content_type
+                ))
+                
                 # Update budget if within budget
                 if budget_check and budget_check['available'] and budget_category:
                     conn.execute("""
@@ -803,19 +1004,36 @@ def pr_new():
                     WHERE department=? AND category=? AND fiscal_year=?
                     """, (total_amount, department, budget_category, fiscal_year))
                 
+                # Log action
+                log_action(pr_id, "PR_CREATED", "PR created with quotation")
+                
+                # Audit log
+                audit_log(
+                    session["user_id"],
+                    "CREATE_PR",
+                    "pr",
+                    pr_id,
+                    {
+                        "pr_no": pr_no,
+                        "total_amount": total_amount,
+                        "has_quotation": True,
+                        "quotation_file": quotation_filename
+                    }
+                )
+                
                 # Create notification
                 create_notification(
                     session["user_id"],
                     "PR Created",
-                    f"PR {pr_no} has been created successfully.",
+                    f"PR {pr_no} has been created successfully with quotation.",
                     "SUCCESS",
                     pr_id
                 )
             
-            flash(f"PR {pr_no} created successfully!", "success")
+            flash(f"PR {pr_no} created and submitted successfully with quotation!", "success")
             
             if initial_status == "BUDGET_EXCEPTION_PENDING":
-                flash("This PR requires budget exception approval before submission.", "warning")
+                flash("This PR requires budget exception approval.", "warning")
                 return redirect(f"/pr/{pr_id}/budget-exception")
             
             return redirect("/dashboard")
@@ -847,7 +1065,8 @@ def pr_new():
             departments=[d['department'] for d in departments],
             budget_categories=[bc['category'] for bc in budget_categories],
             vendors=vendors,
-            fiscal_year=datetime.now().year
+            fiscal_year=datetime.now().year,
+            allowed_extensions=list(ALLOWED_EXTENSIONS)
         )
     except Exception as e:
         print(f"⚠️ Error loading PR form: {e}")
@@ -855,13 +1074,150 @@ def pr_new():
         return redirect("/dashboard")
 
 # ==================================================
-# BUDGET EXCEPTION APPROVAL
+# VIEW PR DETAILS WITH QUOTATION
+# ==================================================
+@app.route("/pr/<int:pr_id>")
+@login_required
+def view_pr(pr_id):
+    try:
+        with db() as conn:
+            # Get PR details
+            pr = conn.execute("""
+            SELECT p.*, 
+                   u.full_name as creator_full_name,
+                   u.department as creator_dept,
+                   (SELECT COUNT(*) FROM pr_items WHERE pr_id=p.id) as item_count
+            FROM pr p
+            JOIN users u ON p.created_by = u.id
+            WHERE p.id=?
+            """, (pr_id,)).fetchone()
+            
+            if not pr:
+                abort(404, description="PR not found")
+            
+            # Check permissions
+            if session["role"] == "user" and pr["created_by"] != session["user_id"]:
+                abort(403, description="You can only view your own PRs")
+            
+            # Get items
+            items = conn.execute("""
+            SELECT * FROM pr_items WHERE pr_id=?
+            ORDER BY item_no
+            """, (pr_id,)).fetchall()
+            
+            # Get action history
+            history = conn.execute("""
+            SELECT * FROM approval_history 
+            WHERE pr_id=?
+            ORDER BY action_date DESC
+            """, (pr_id,)).fetchall()
+            
+            # Check if PO exists
+            po = conn.execute("""
+            SELECT * FROM po WHERE pr_id=?
+            """, (pr_id,)).fetchone()
+            
+            # Get quotation info
+            quotation = conn.execute("""
+            SELECT * FROM pr_quotation WHERE pr_id=?
+            """, (pr_id,)).fetchone()
+            
+            # Get budget info if applicable
+            budget_info = None
+            if pr['budget_category']:
+                budget_info = conn.execute("""
+                SELECT * FROM budget_categories
+                WHERE department=? AND category=? AND fiscal_year=?
+                """, (pr['department'], pr['budget_category'], pr['fiscal_year'])).fetchone()
+            
+            # Audit log
+            audit_log(
+                session["user_id"],
+                "VIEW_PR",
+                "pr",
+                pr_id,
+                {"pr_no": pr['pr_no']}
+            )
+        
+        return render_template(
+            "view_pr.html",
+            pr=pr,
+            items=items,
+            history=history,
+            po=po,
+            quotation=quotation,
+            budget_info=budget_info,
+            BUDGET_STATUS=BUDGET_STATUS
+        )
+        
+    except Exception as e:
+        print(f"⚠️ View PR error: {e}")
+        flash("Error loading PR details", "danger")
+        return redirect("/dashboard")
+
+# ==================================================
+# DOWNLOAD QUOTATION
+# ==================================================
+@app.route("/pr/<int:pr_id>/quotation")
+@login_required
+def download_quotation(pr_id):
+    try:
+        with db() as conn:
+            # Get PR and quotation info
+            pr = conn.execute("""
+            SELECT p.*, u.full_name as creator_name 
+            FROM pr p
+            JOIN users u ON p.created_by = u.id
+            WHERE p.id=?
+            """, (pr_id,)).fetchone()
+            
+            if not pr:
+                abort(404, description="PR not found")
+            
+            # Check permissions
+            if session["role"] == "user" and pr["created_by"] != session["user_id"]:
+                abort(403, description="You can only download quotations for your own PRs")
+            
+            # Check if quotation exists
+            if not pr['quotation_filename']:
+                flash("No quotation file found for this PR", "warning")
+                return redirect(f"/pr/{pr_id}")
+            
+            quotation_path = os.path.join(QUOTATION_FOLDER, pr['quotation_filename'])
+            
+            if not os.path.exists(quotation_path):
+                flash("Quotation file not found on server", "danger")
+                return redirect(f"/pr/{pr_id}")
+            
+            # Audit log
+            audit_log(
+                session["user_id"],
+                "DOWNLOAD_QUOTATION",
+                "pr",
+                pr_id,
+                {"pr_no": pr['pr_no'], "filename": pr['quotation_filename']}
+            )
+            
+            return send_from_directory(
+                QUOTATION_FOLDER,
+                pr['quotation_filename'],
+                as_attachment=True,
+                download_name=f"quotation_{pr['pr_no']}.{pr['quotation_filename'].rsplit('.', 1)[1]}"
+            )
+            
+    except Exception as e:
+        print(f"⚠️ Download quotation error: {e}")
+        flash("Error downloading quotation", "danger")
+        return redirect(f"/pr/{pr_id}")
+
+# ==================================================
+# BUDGET EXCEPTION APPROVAL (RECORD-ONLY)
 # ==================================================
 @app.route("/pr/<int:pr_id>/budget-exception", methods=["GET", "POST"])
 @login_required
-@role_required("approver1", "approver2", "approver3", "approver4", "superadmin")
+@role_required("superadmin")
 def budget_exception_approval(pr_id):
-    """Handle budget exception approval"""
+    """Handle budget exception approval - SUPERADMIN ONLY"""
     try:
         with db() as conn:
             pr = conn.execute("""
@@ -886,7 +1242,7 @@ def budget_exception_approval(pr_id):
                         budget_exception_approver=?,
                         budget_exception_date=?,
                         budget_exception_notes=?,
-                        status='DRAFT',
+                        status='SUBMITTED',
                         last_updated=?
                     WHERE id=?
                     """, (
@@ -899,40 +1255,54 @@ def budget_exception_approval(pr_id):
                     ))
                     
                     # Log approval
-                    log_approval_action(pr_id, "BUDGET_EXCEPTION_APPROVE", comments)
+                    log_action(pr_id, "BUDGET_EXCEPTION_APPROVE", comments)
+                    
+                    # Audit log
+                    audit_log(
+                        session["user_id"],
+                        "APPROVE_BUDGET_EXCEPTION",
+                        "pr",
+                        pr_id,
+                        {"action": "approve", "comments": comments, "pr_no": pr['pr_no']}
+                    )
                     
                     # Create notifications
                     create_notification(
                         pr['created_by'],
                         "Budget Exception Approved",
-                        f"Budget exception for PR {pr['pr_no']} has been approved.",
+                        f"Budget exception for PR {pr['pr_no']} has been approved by {session['name']}.",
                         "SUCCESS",
                         pr_id
                     )
                     
-                    flash("Budget exception approved! PR is now in DRAFT status.", "success")
+                    flash("Budget exception approved! PR is now ready for PO.", "success")
                     
                 elif action == "reject":
                     conn.execute("""
                     UPDATE pr SET
-                        budget_status=?,
                         status='REJECTED',
-                        rejection_reason=?,
                         last_updated=?
                     WHERE id=?
                     """, (
-                        BUDGET_STATUS['OUT_OF_BUDGET'],
-                        f"Budget exception rejected: {comments}",
                         datetime.now().isoformat(),
                         pr_id
                     ))
                     
-                    log_approval_action(pr_id, "BUDGET_EXCEPTION_REJECT", comments)
+                    log_action(pr_id, "BUDGET_EXCEPTION_REJECT", comments)
+                    
+                    # Audit log
+                    audit_log(
+                        session["user_id"],
+                        "REJECT_BUDGET_EXCEPTION",
+                        "pr",
+                        pr_id,
+                        {"action": "reject", "comments": comments, "pr_no": pr['pr_no']}
+                    )
                     
                     create_notification(
                         pr['created_by'],
                         "Budget Exception Rejected",
-                        f"Budget exception for PR {pr['pr_no']} has been rejected.",
+                        f"Budget exception for PR {pr['pr_no']} has been rejected by {session['name']}.",
                         "DANGER",
                         pr_id
                     )
@@ -967,359 +1337,15 @@ def budget_exception_approval(pr_id):
         return redirect("/dashboard")
 
 # ==================================================
-# SUBMIT PR FOR APPROVAL
-# ==================================================
-@app.route("/pr/<int:pr_id>/submit", methods=["GET", "POST"])
-@login_required
-@role_required("user")
-def submit_pr(pr_id):
-    try:
-        with db() as conn:
-            pr = conn.execute("""
-            SELECT * FROM pr 
-            WHERE id=? AND created_by=? 
-            AND status IN ('DRAFT', 'BUDGET_EXCEPTION_APPROVED')
-            """, (pr_id, session["user_id"])).fetchone()
-            
-            if not pr:
-                abort(403, description="PR not found or cannot be submitted")
-            
-            # Determine approval path
-            path = get_approval_path(pr['total_amount'], pr['budget_status'])
-            
-            # Update PR status
-            conn.execute("""
-            UPDATE pr SET
-                status='PENDING_APPROVAL',
-                current_approver_role=?,
-                last_updated=?
-            WHERE id=?
-            """, (
-                path[0] if path[0] != 'budget_exception' else 'approver1',
-                datetime.now().isoformat(),
-                pr_id
-            ))
-            
-            # Create notification for first approver
-            approvers = conn.execute("""
-            SELECT id FROM users WHERE role=? AND active=1
-            LIMIT 1
-            """, (path[0] if path[0] != 'budget_exception' else 'approver1',)).fetchone()
-            
-            if approvers:
-                create_notification(
-                    approvers['id'],
-                    "PR Pending Approval",
-                    f"PR {pr['pr_no']} requires your approval.",
-                    "WARNING",
-                    pr_id
-                )
-            
-            # Log submission
-            log_approval_action(pr_id, "SUBMIT_FOR_APPROVAL")
-            
-            flash("PR submitted for approval successfully!", "success")
-        
-        return redirect("/dashboard")
-        
-    except Exception as e:
-        print(f"⚠️ Submit PR error: {e}")
-        flash("Error submitting PR", "danger")
-        return redirect("/dashboard")
-
-# ==================================================
-# APPROVAL SYSTEM
-# ==================================================
-@app.route("/approve")
-@login_required
-@role_required("approver1", "approver2", "approver3", "approver4")
-def approve_list():
-    try:
-        role = session["role"]
-        
-        with db() as conn:
-            # Get PRs pending current approver's approval
-            prs = conn.execute("""
-            SELECT p.*, 
-                   u.full_name as requester_name_full,
-                   (SELECT COUNT(*) FROM pr_items WHERE pr_id=p.id) as item_count
-            FROM pr p
-            JOIN users u ON p.created_by = u.id
-            WHERE p.status='PENDING_APPROVAL'
-            AND p.current_approver_role=?
-            ORDER BY p.created_at DESC
-            """, (role,)).fetchall()
-            
-            # Also get budget exception requests for approver1 and above
-            budget_exceptions = []
-            if role in ['approver1', 'approver2', 'approver3', 'approver4', 'superadmin']:
-                budget_exceptions = conn.execute("""
-                SELECT p.*, u.full_name as requester_name_full
-                FROM pr p
-                JOIN users u ON p.created_by = u.id
-                WHERE p.status='BUDGET_EXCEPTION_PENDING'
-                ORDER BY p.created_at DESC
-                """).fetchall()
-        
-        return render_template(
-            "approve_list_enhanced.html",
-            prs=prs,
-            budget_exceptions=budget_exceptions,
-            role=role
-        )
-        
-    except Exception as e:
-        print(f"⚠️ Approve list error: {e}")
-        flash("Error loading approvals", "danger")
-        return redirect("/dashboard")
-
-@app.route("/approve/<int:pr_id>/<action>", methods=["POST"])
-@login_required
-@role_required("approver1", "approver2", "approver3", "approver4")
-def approve_action(pr_id, action):
-    """Handle approval/rejection"""
-    comments = request.form.get("comments", "")
-    
-    try:
-        with db() as conn:
-            pr = conn.execute("""
-            SELECT * FROM pr 
-            WHERE id=? AND status='PENDING_APPROVAL' 
-            AND current_approver_role=?
-            """, (pr_id, session["role"])).fetchone()
-            
-            if not pr:
-                abort(404, description="PR not found or not pending your approval")
-            
-            if action == "approve":
-                # Determine approval path
-                path = get_approval_path(pr['total_amount'], pr['budget_status'])
-                current_idx = path.index(session["role"]) if session["role"] in path else -1
-                
-                # Update approver status
-                approver_field = f"{session['role']}_status"
-                approver_date_field = f"{session['role']}_date"
-                approver_notes_field = f"{session['role']}_notes"
-                approver_id_field = f"{session['role']}_id"
-                
-                conn.execute(f"""
-                UPDATE pr SET
-                    {approver_field}=?,
-                    {approver_date_field}=?,
-                    {approver_notes_field}=?,
-                    {approver_id_field}=?,
-                    last_updated=?
-                WHERE id=?
-                """, (
-                    "APPROVED",
-                    datetime.now().isoformat(),
-                    comments,
-                    session["user_id"],
-                    datetime.now().isoformat(),
-                    pr_id
-                ))
-                
-                # Check if there's next approver
-                if current_idx + 1 < len(path):
-                    next_role = path[current_idx + 1]
-                    conn.execute("""
-                    UPDATE pr SET current_approver_role=?
-                    WHERE id=?
-                    """, (next_role, pr_id))
-                    
-                    # Notify next approver
-                    next_approvers = conn.execute("""
-                    SELECT id FROM users WHERE role=? AND active=1
-                    LIMIT 1
-                    """, (next_role,)).fetchone()
-                    
-                    if next_approvers:
-                        create_notification(
-                            next_approvers['id'],
-                            "PR Pending Your Approval",
-                            f"PR {pr['pr_no']} has been approved by {session['role']} and now requires your approval.",
-                            "WARNING",
-                            pr_id
-                        )
-                    
-                    flash(f"Approved! Moved to {next_role} for next approval.", "success")
-                    
-                else:
-                    # Final approval
-                    conn.execute("""
-                    UPDATE pr SET 
-                        status='APPROVED',
-                        current_approver_role='',
-                        last_updated=?
-                    WHERE id=?
-                    """, (datetime.now().isoformat(), pr_id))
-                    
-                    # Create notification for procurement
-                    procurement_users = conn.execute("""
-                    SELECT id FROM users WHERE role='procurement' AND active=1
-                    LIMIT 1
-                    """).fetchone()
-                    
-                    if procurement_users:
-                        create_notification(
-                            procurement_users['id'],
-                            "PR Approved - Ready for Procurement",
-                            f"PR {pr['pr_no']} has been fully approved and is ready for procurement processing.",
-                            "SUCCESS",
-                            pr_id
-                        )
-                    
-                    # Notify requester
-                    create_notification(
-                        pr['created_by'],
-                        "PR Fully Approved",
-                        f"Your PR {pr['pr_no']} has been fully approved!",
-                        "SUCCESS",
-                        pr_id
-                    )
-                    
-                    flash("PR fully approved! Sent to procurement.", "success")
-                
-                # Log approval action
-                log_approval_action(pr_id, "APPROVE", comments)
-                
-            elif action == "reject":
-                # Reject the PR
-                conn.execute("""
-                UPDATE pr SET
-                    status='REJECTED',
-                    current_approver_role='',
-                    rejection_reason=?,
-                    last_updated=?
-                WHERE id=?
-                """, (
-                    f"Rejected by {session['role']}: {comments}",
-                    datetime.now().isoformat(),
-                    pr_id
-                ))
-                
-                # Notify requester
-                create_notification(
-                    pr['created_by'],
-                    "PR Rejected",
-                    f"Your PR {pr['pr_no']} has been rejected by {session['role']}.",
-                    "DANGER",
-                    pr_id
-                )
-                
-                # Log rejection
-                log_approval_action(pr_id, "REJECT", comments)
-                
-                flash("PR rejected.", "danger")
-            
-            elif action == "return":
-                # Return to requester for revision
-                conn.execute("""
-                UPDATE pr SET
-                    status='DRAFT',
-                    current_approver_role='',
-                    rejection_reason=?,
-                    last_updated=?
-                WHERE id=?
-                """, (
-                    f"Returned by {session['role']} for revision: {comments}",
-                    datetime.now().isoformat(),
-                    pr_id
-                ))
-                
-                # Notify requester
-                create_notification(
-                    pr['created_by'],
-                    "PR Returned for Revision",
-                    f"Your PR {pr['pr_no']} has been returned for revision by {session['role']}.",
-                    "WARNING",
-                    pr_id
-                )
-                
-                # Log return action
-                log_approval_action(pr_id, "RETURN", comments)
-                
-                flash("PR returned to requester for revision.", "warning")
-        
-        return redirect("/approve")
-        
-    except Exception as e:
-        print(f"⚠️ Approval action error: {e}")
-        flash("Error processing approval", "danger")
-        return redirect("/approve")
-
-# ==================================================
-# VIEW PR DETAILS
-# ==================================================
-@app.route("/pr/<int:pr_id>")
-@login_required
-def view_pr(pr_id):
-    try:
-        with db() as conn:
-            # Get PR details
-            pr = conn.execute("""
-            SELECT p.*, 
-                   u.full_name as creator_full_name,
-                   u.department as creator_dept,
-                   (SELECT COUNT(*) FROM pr_items WHERE pr_id=p.id) as item_count
-            FROM pr p
-            JOIN users u ON p.created_by = u.id
-            WHERE p.id=?
-            """, (pr_id,)).fetchone()
-            
-            if not pr:
-                abort(404, description="PR not found")
-            
-            # Check permissions
-            if session["role"] == "user" and pr["created_by"] != session["user_id"]:
-                abort(403, description="You can only view your own PRs")
-            
-            # Get items
-            items = conn.execute("""
-            SELECT * FROM pr_items WHERE pr_id=?
-            ORDER BY item_no
-            """, (pr_id,)).fetchall()
-            
-            # Get approval history
-            history = conn.execute("""
-            SELECT * FROM approval_history 
-            WHERE pr_id=?
-            ORDER BY action_date DESC
-            """, (pr_id,)).fetchall()
-            
-            # Get budget info if applicable
-            budget_info = None
-            if pr['budget_category']:
-                budget_info = conn.execute("""
-                SELECT * FROM budget_categories
-                WHERE department=? AND category=? AND fiscal_year=?
-                """, (pr['department'], pr['budget_category'], pr['fiscal_year'])).fetchone()
-        
-        return render_template(
-            "view_pr.html",
-            pr=pr,
-            items=items,
-            history=history,
-            budget_info=budget_info,
-            APPROVAL_THRESHOLDS=APPROVAL_THRESHOLDS,
-            BUDGET_STATUS=BUDGET_STATUS
-        )
-        
-    except Exception as e:
-        print(f"⚠️ View PR error: {e}")
-        flash("Error loading PR details", "danger")
-        return redirect("/dashboard")
-
-# ==================================================
-# PROCUREMENT
+# PROCUREMENT - UPDATED DENGAN PO LOGIC
 # ==================================================
 @app.route("/procurement")
 @login_required
-@role_required("procurement")
+@role_required("procurement", "superadmin")
 def procurement():
     try:
         with db() as conn:
-            # Get approved PRs
+            # Get submitted PRs yang belum ada PO (termasuk budget exception pending)
             prs = conn.execute("""
             SELECT p.*, 
                    u.full_name as requester_name_full,
@@ -1327,33 +1353,45 @@ def procurement():
                    (SELECT COUNT(*) FROM pr_items WHERE pr_id=p.id) as item_count
             FROM pr p
             JOIN users u ON p.created_by = u.id
-            WHERE p.status='APPROVED'
+            WHERE p.status IN ('SUBMITTED', 'BUDGET_EXCEPTION_PENDING')
+            AND p.id NOT IN (SELECT pr_id FROM po)  # KEY LOGIC - HANYA YANG BELUM ADA PO
             ORDER BY p.created_at DESC
             """).fetchall()
             
-            # Get PRs received by procurement
-            received_prs = conn.execute("""
-            SELECT p.*, 
-                   u.full_name as requester_name_full,
-                   (SELECT COUNT(*) FROM pr_items WHERE pr_id=p.id) as item_count
-            FROM pr p
-            JOIN users u ON p.created_by = u.id
-            WHERE p.procurement_received_date IS NOT NULL
-            ORDER BY p.procurement_received_date DESC
+            # Get PO list (terbaru)
+            pos = conn.execute("""
+            SELECT po.*, pr.pr_no, u.full_name as requester_name
+            FROM po
+            JOIN pr ON po.pr_id = pr.id
+            JOIN users u ON pr.created_by = u.id
+            ORDER BY po.created_at DESC
             LIMIT 10
             """).fetchall()
             
             # Procurement stats
             stats = {
-                'total_approved': len(prs),
-                'received_count': len(received_prs),
-                'pending_receipt': len(prs) - len(received_prs)
+                'total_submitted': len(prs),
+                'total_pos': conn.execute("SELECT COUNT(*) FROM po").fetchone()[0],
+                'pending_po': len(prs),
+                'without_quotation': conn.execute("""
+                    SELECT COUNT(*) FROM pr 
+                    WHERE status IN ('SUBMITTED', 'BUDGET_EXCEPTION_PENDING')
+                    AND quotation_filename IS NULL
+                    AND id NOT IN (SELECT pr_id FROM po)
+                """).fetchone()[0]
             }
+        
+        # Audit log
+        audit_log(
+            session["user_id"],
+            "VIEW_PROCUREMENT",
+            details={"stats": stats}
+        )
         
         return render_template(
             "procurement_enhanced.html",
             prs=prs,
-            received_prs=received_prs,
+            pos=pos,
             stats=stats
         )
         
@@ -1362,52 +1400,280 @@ def procurement():
         flash("Error loading procurement page", "danger")
         return redirect("/dashboard")
 
-@app.route("/procurement/receive/<int:pr_id>", methods=["POST"])
+# ==================================================
+# PO MANAGEMENT - PROCUREMENT ENTER PO NUMBER (FIXED)
+# ==================================================
+@app.route("/procurement/po/new/<int:pr_id>", methods=["GET", "POST"])
 @login_required
-@role_required("procurement")
-def receive_pr(pr_id):
-    """Mark PR as received by procurement"""
+@role_required("procurement", "superadmin")
+def create_po(pr_id):
+    """
+    Form untuk procurement isi PO number untuk PR yang sudah submitted
+    """
     try:
         with db() as conn:
-            # Verify PR is approved
+            # Check jika PR sudah ada PO
+            existing_po = conn.execute("""
+            SELECT * FROM po WHERE pr_id=?
+            """, (pr_id,)).fetchone()
+            
+            if existing_po:
+                flash(f"PR ini sudah ada PO: {existing_po['po_no']}", "warning")
+                return redirect("/procurement")
+            
+            # Get PR details
             pr = conn.execute("""
-            SELECT * FROM pr WHERE id=? AND status='APPROVED'
+            SELECT p.*, u.full_name as requester_name_full
+            FROM pr p
+            JOIN users u ON p.created_by = u.id
+            WHERE p.id=? AND p.status IN ('SUBMITTED', 'BUDGET_EXCEPTION_PENDING')
             """, (pr_id,)).fetchone()
             
             if not pr:
-                abort(404, description="PR not found or not approved")
+                flash("PR tidak ditemukan atau belum dalam status SUBMITTED/BUDGET_EXCEPTION_PENDING", "danger")
+                return redirect("/procurement")
             
-            # Update as received
-            conn.execute("""
-            UPDATE pr SET
-                procurement_received_date=?,
-                procurement_officer_id=?,
-                last_updated=?
-            WHERE id=?
-            """, (
-                datetime.now().isoformat(),
-                session["user_id"],
-                datetime.now().isoformat(),
-                pr_id
-            ))
+            # Check if PR has quotation - ENFORCE RULE
+            if not pr['quotation_filename']:
+                flash(f"Cannot create PO. PR {pr['pr_no']} must have quotation file.", "danger")
+                return redirect("/procurement")
             
-            # Create notification for requester
-            create_notification(
-                pr['created_by'],
-                "PR Received by Procurement",
-                f"Your PR {pr['pr_no']} has been received by the procurement department.",
-                "INFO",
-                pr_id
+            if request.method == "POST":
+                # Validasi PO number
+                po_no = request.form.get("po_no", "").strip()
+                po_date = request.form.get("po_date")
+                
+                if not po_no:
+                    flash("PO Number is required", "danger")
+                    return redirect(f"/procurement/po/new/{pr_id}")
+                
+                # Check jika PO number sudah ada
+                existing_po_no = conn.execute("""
+                SELECT po_no FROM po WHERE po_no=?
+                """, (po_no,)).fetchone()
+                
+                if existing_po_no:
+                    flash(f"PO Number {po_no} sudah digunakan", "danger")
+                    return redirect(f"/procurement/po/new/{pr_id}")
+                
+                # Create PO record
+                cursor = conn.execute("""
+                INSERT INTO po (
+                    pr_id, po_no, po_date,
+                    vendor_name, total_amount,
+                    created_by, created_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?)
+                """, (
+                    pr_id,
+                    po_no,
+                    po_date or datetime.now().isoformat(),
+                    pr['vendor_name'],
+                    pr['total_amount'],
+                    session["user_id"],
+                    datetime.now().isoformat()
+                ))
+                
+                po_id = cursor.lastrowid
+                
+                # Update PR status
+                conn.execute("""
+                UPDATE pr SET 
+                    status='PO_CREATED',
+                    last_updated=?
+                WHERE id=?
+                """, (datetime.now().isoformat(), pr_id))
+                
+                # Log action
+                log_action(pr_id, "PO_CREATED", f"PO {po_no} created")
+                
+                # Audit log
+                audit_log(
+                    session["user_id"],
+                    "CREATE_PO",
+                    "po",
+                    po_id,
+                    {
+                        "po_no": po_no,
+                        "pr_no": pr['pr_no'],
+                        "vendor": pr['vendor_name'],
+                        "amount": pr['total_amount']
+                    }
+                )
+                
+                # Create notifications
+                create_notification(
+                    session["user_id"],
+                    "PO Created",
+                    f"PO {po_no} telah dibuat untuk PR {pr['pr_no']}",
+                    "SUCCESS",
+                    pr_id
+                )
+                
+                create_notification(
+                    pr['created_by'],
+                    "PO Created for Your PR",
+                    f"PO {po_no} telah dibuat untuk PR Anda: {pr['pr_no']}",
+                    "INFO",
+                    pr_id
+                )
+                
+                flash(f"PO {po_no} berhasil dibuat untuk PR {pr['pr_no']}", "success")
+                return redirect(f"/procurement/po/{po_id}?print=1")
+            
+            # GET request - show form
+            items = conn.execute("""
+            SELECT * FROM pr_items WHERE pr_id=?
+            ORDER BY item_no
+            """, (pr_id,)).fetchall()
+            
+            return render_template(
+                "procurement_po_form.html",
+                pr=pr,
+                items=items,
+                default_date=datetime.now().strftime("%Y-%m-%d")
             )
             
-            flash(f"PR {pr['pr_no']} marked as received by procurement.", "success")
-        
-        return redirect("/procurement")
-        
     except Exception as e:
-        print(f"⚠️ Receive PR error: {e}")
-        flash("Error receiving PR", "danger")
+        print(f"⚠️ Create PO error: {e}")
+        flash("Error creating PO", "danger")
         return redirect("/procurement")
+
+@app.route("/procurement/po/list")
+@login_required
+@role_required("procurement", "superadmin")
+def po_list():
+    """
+    List semua PO yang sudah dibuat
+    """
+    try:
+        with db() as conn:
+            # Get all POs dengan detail PR
+            pos = conn.execute("""
+            SELECT 
+                po.id as po_id,
+                po.po_no,
+                po.po_date,
+                po.vendor_name,
+                po.total_amount,
+                po.created_at as po_created,
+                po.status as po_status,
+                
+                pr.id as pr_id,
+                pr.pr_no,
+                pr.department,
+                pr.created_at as pr_created,
+                pr.quotation_filename,
+                
+                u.full_name as requester_name,
+                po_user.full_name as po_creator_name
+                
+            FROM po
+            JOIN pr ON po.pr_id = pr.id
+            JOIN users u ON pr.created_by = u.id
+            LEFT JOIN users po_user ON po.created_by = po_user.id
+            WHERE po.status='ACTIVE'
+            ORDER BY po.created_at DESC
+            """).fetchall()
+            
+            # Get stats
+            stats = conn.execute("""
+            SELECT 
+                COUNT(*) as total_po,
+                COUNT(DISTINCT vendor_name) as total_vendors,
+                SUM(total_amount) as total_amount,
+                AVG(total_amount) as avg_amount
+            FROM po
+            WHERE status='ACTIVE'
+            """).fetchone()
+        
+        # Audit log
+        audit_log(
+            session["user_id"],
+            "VIEW_PO_LIST",
+            details={"total_po": stats['total_po'] if stats else 0}
+        )
+        
+        return render_template(
+            "procurement_po_list.html",
+            pos=pos,
+            stats=stats
+        )
+            
+    except Exception as e:
+        print(f"⚠️ PO list error: {e}")
+        flash("Error loading PO list", "danger")
+        return redirect("/procurement")
+
+@app.route("/procurement/po/<int:po_id>")
+@login_required
+def view_po(po_id):
+    """
+    View detail PO (accessible by multiple roles)
+    """
+    try:
+        with db() as conn:
+            # Get PO details dengan PR info
+            po = conn.execute("""
+            SELECT 
+                po.*,
+                pr.pr_no,
+                pr.department,
+                pr.purpose,
+                pr.created_at as pr_created,
+                pr.quotation_filename,
+                
+                u.full_name as requester_name,
+                u.department as requester_dept,
+                u.email as requester_email,
+                
+                po_user.full_name as po_creator_name
+                
+            FROM po
+            JOIN pr ON po.pr_id = pr.id
+            JOIN users u ON pr.created_by = u.id
+            LEFT JOIN users po_user ON po.created_by = po_user.id
+            WHERE po.id=?
+            """, (po_id,)).fetchone()
+            
+            if not po:
+                flash("PO not found", "danger")
+                return redirect("/procurement/po/list")
+            
+            # Get PR items
+            items = conn.execute("""
+            SELECT * FROM pr_items WHERE pr_id=?
+            ORDER BY item_no
+            """, (po['pr_id'],)).fetchall()
+            
+            # Check permission for users (hanya bisa lihat PO mereka sendiri)
+            if session["role"] == "user":
+                # Verify user ID match
+                requester_id = conn.execute("""
+                SELECT created_by FROM pr WHERE id=?
+                """, (po['pr_id'],)).fetchone()
+                
+                if not requester_id or requester_id['created_by'] != session["user_id"]:
+                    abort(403, description="You can only view POs for your own PRs")
+            
+            # Audit log
+            audit_log(
+                session["user_id"],
+                "VIEW_PO",
+                "po",
+                po_id,
+                {"po_no": po['po_no'], "pr_no": po['pr_no']}
+            )
+            
+            return render_template(
+                "procurement_po_view.html",
+                po=po,
+                items=items
+            )
+            
+    except Exception as e:
+        print(f"⚠️ View PO error: {e}")
+        flash("Error loading PO details", "danger")
+        return redirect("/procurement/po/list")
 
 # ==================================================
 # NOTIFICATION SYSTEM
@@ -1425,6 +1691,12 @@ def notifications():
             ORDER BY n.created_at DESC
             LIMIT 50
             """, (session["user_id"],)).fetchall()
+        
+        # Audit log
+        audit_log(
+            session["user_id"],
+            "VIEW_NOTIFICATIONS"
+        )
         
         return render_template("notifications.html", notifications=notifications)
         
@@ -1472,7 +1744,7 @@ def mark_all_notifications_read():
         return redirect("/dashboard")
 
 # ==================================================
-# VENDOR MANAGEMENT - FULL IMPLEMENTATION
+# VENDOR MANAGEMENT
 # ==================================================
 @app.route("/vendors")
 @login_required
@@ -1484,6 +1756,12 @@ def vendor_list():
             SELECT * FROM vendors 
             ORDER BY vendor_name
             """).fetchall()
+        
+        # Audit log
+        audit_log(
+            session["user_id"],
+            "VIEW_VENDORS"
+        )
         
         return render_template("vendors.html", vendors=vendors)
         
@@ -1596,6 +1874,18 @@ def edit_vendor(vendor_code):
                     "INFO"
                 )
                 
+                # Audit log
+                audit_log(
+                    session["user_id"],
+                    "UPDATE_VENDOR",
+                    "vendor",
+                    vendor['id'],
+                    {
+                        "vendor_code": vendor_code,
+                        "vendor_name": request.form['vendor_name']
+                    }
+                )
+                
                 flash(f"Vendor {vendor_code} updated successfully", "success")
                 return redirect("/vendors")
             
@@ -1621,7 +1911,7 @@ def edit_vendor(vendor_code):
 
 @app.route("/vendors/view/<string:vendor_code>")
 @login_required
-@role_required("superadmin", "procurement", "user", "approver1", "approver2", "approver3", "approver4")
+@role_required("superadmin", "procurement", "user")
 def view_vendor(vendor_code):
     """View vendor details"""
     try:
@@ -1669,8 +1959,20 @@ def delete_vendor(vendor_code):
                 flash(f"Cannot delete vendor {vendor_code} - used in {pr_count} PR(s). Deactivate instead.", "warning")
                 return redirect("/vendors")
             
+            # Get vendor details for audit log
+            vendor = conn.execute("SELECT id, vendor_name FROM vendors WHERE vendor_code=?", (vendor_code,)).fetchone()
+            
             # Delete vendor
             conn.execute("DELETE FROM vendors WHERE vendor_code=?", (vendor_code,))
+            
+            # Audit log
+            audit_log(
+                session["user_id"],
+                "DELETE_VENDOR",
+                "vendor",
+                vendor['id'] if vendor else None,
+                {"vendor_code": vendor_code, "vendor_name": vendor['vendor_name'] if vendor else "Unknown"}
+            )
             
             flash(f"Vendor {vendor_code} deleted successfully", "success")
             
@@ -1682,7 +1984,7 @@ def delete_vendor(vendor_code):
         return redirect("/vendors")
 
 # ==================================================
-# PROCUREMENT VENDOR REGISTRATION FORM - MAIN IMPLEMENTATION
+# PROCUREMENT VENDOR REGISTRATION FORM
 # ==================================================
 @app.route("/procurement/vendor/new", methods=["GET", "POST"])
 @login_required
@@ -1690,7 +1992,6 @@ def delete_vendor(vendor_code):
 def procurement_vendor_form():
     """
     Form untuk procurement daftar vendor baru
-    Sesuai dengan Excel Vendor Registration Form
     """
     if request.method == "POST":
         try:
@@ -1781,6 +2082,18 @@ def procurement_vendor_form():
                 "SUCCESS"
             )
             
+            # Audit log
+            audit_log(
+                session["user_id"],
+                "CREATE_VENDOR",
+                "vendor",
+                None,
+                {
+                    "vendor_code": request.form['vendor_code'],
+                    "vendor_name": request.form['vendor_name']
+                }
+            )
+            
             flash(f"Vendor {request.form['vendor_name']} registered successfully!", "success")
             return redirect("/vendors")
             
@@ -1845,7 +2158,35 @@ def get_vendor_details(vendor_code):
         return jsonify({"success": False, "error": str(e)})
 
 # ==================================================
-# USER MANAGEMENT (SUPER ADMIN) - CRUD LENGKAP
+# PO SEARCH API
+# ==================================================
+@app.route("/api/po/search")
+@login_required
+def search_po():
+    """Search POs for autocomplete"""
+    query = request.args.get("q", "")
+    
+    try:
+        with db() as conn:
+            pos = conn.execute("""
+            SELECT po_no, pr_no, vendor_name
+            FROM po
+            JOIN pr ON po.pr_id = pr.id
+            WHERE (
+                po_no LIKE ? 
+                OR pr_no LIKE ? 
+                OR vendor_name LIKE ?
+            )
+            AND po.status='ACTIVE'
+            LIMIT 20
+            """, (f"%{query}%", f"%{query}%", f"%{query}%")).fetchall()
+        
+        return jsonify([dict(p) for p in pos])
+    except Exception as e:
+        return jsonify([])
+
+# ==================================================
+# USER MANAGEMENT (SUPER ADMIN)
 # ==================================================
 @app.route("/admin/users", methods=["GET", "POST"])
 @login_required
@@ -1870,6 +2211,16 @@ def manage_users():
                     float(request.form.get("approval_limit", 0)),
                     datetime.now().isoformat()
                 ))
+            
+            # Audit log
+            audit_log(
+                session["user_id"],
+                "CREATE_USER",
+                "user",
+                None,
+                {"username": request.form["username"], "role": request.form["role"]}
+            )
+            
             flash("User created successfully!", "success")
             return redirect("/admin/users")
         except sqlite3.IntegrityError:
@@ -1889,7 +2240,7 @@ def manage_users():
         return redirect("/dashboard")
 
 # ==================================================
-# USER API ROUTES (CRUD OPERATIONS)
+# USER API ROUTES
 # ==================================================
 @app.route("/api/users/<int:user_id>", methods=["GET"])
 @login_required
@@ -1942,6 +2293,15 @@ def update_user(user_id):
                 user_id
             ))
         
+        # Audit log
+        audit_log(
+            session["user_id"],
+            "UPDATE_USER",
+            "user",
+            user_id,
+            data
+        )
+        
         return jsonify({"success": True, "message": "User updated successfully"})
     except Exception as e:
         return jsonify({"success": False, "error": str(e)}), 500
@@ -1965,6 +2325,15 @@ def delete_user(user_id):
             # Delete user
             conn.execute("DELETE FROM users WHERE id=?", (user_id,))
         
+        # Audit log
+        audit_log(
+            session["user_id"],
+            "DELETE_USER",
+            "user",
+            user_id,
+            {"username": user['username']}
+        )
+        
         return jsonify({"success": True, "message": "User deleted successfully"})
     except Exception as e:
         return jsonify({"success": False, "error": str(e)}), 500
@@ -1979,6 +2348,14 @@ def activate_user(user_id):
             conn.execute("""
             UPDATE users SET active=1 WHERE id=?
             """, (user_id,))
+        
+        # Audit log
+        audit_log(
+            session["user_id"],
+            "ACTIVATE_USER",
+            "user",
+            user_id
+        )
         
         return jsonify({"success": True, "message": "User activated successfully"})
     except Exception as e:
@@ -1998,6 +2375,14 @@ def deactivate_user(user_id):
             conn.execute("""
             UPDATE users SET active=0 WHERE id=?
             """, (user_id,))
+        
+        # Audit log
+        audit_log(
+            session["user_id"],
+            "DEACTIVATE_USER",
+            "user",
+            user_id
+        )
         
         return jsonify({"success": True, "message": "User deactivated successfully"})
     except Exception as e:
@@ -2026,6 +2411,15 @@ def reset_user_password(user_id):
                 generate_password_hash(new_password),
                 user_id
             ))
+        
+        # Audit log
+        audit_log(
+            session["user_id"],
+            "RESET_PASSWORD",
+            "user",
+            user_id,
+            {"action": "password_reset"}
+        )
         
         return jsonify({"success": True, "message": "Password reset successfully"})
     except Exception as e:
@@ -2059,6 +2453,15 @@ def update_profile():
         session["name"] = data.get("full_name", session["name"])
         if data.get("department"):
             session["department"] = data.get("department")
+        
+        # Audit log
+        audit_log(
+            session["user_id"],
+            "UPDATE_PROFILE",
+            "user",
+            session["user_id"],
+            data
+        )
         
         return jsonify({"success": True, "message": "Profile updated successfully"})
     except Exception as e:
@@ -2097,6 +2500,15 @@ def change_password():
                 session["user_id"]
             ))
         
+        # Audit log
+        audit_log(
+            session["user_id"],
+            "CHANGE_PASSWORD",
+            "user",
+            session["user_id"],
+            {"action": "password_change"}
+        )
+        
         return jsonify({"success": True, "message": "Password changed successfully"})
     except Exception as e:
         return jsonify({"success": False, "error": str(e)}), 500
@@ -2119,11 +2531,6 @@ def create_initial_users():
                     ("user1", "John Doe", "john@company.com", "user", "IT", 0),
                     ("user2", "Jane Smith", "jane@company.com", "user", "HR", 0),
                     ("user3", "Bob Johnson", "bob@company.com", "user", "Finance", 0),
-                    # Approvers
-                    ("approver1", "Director IT", "director.it@company.com", "approver1", "IT", 10000),
-                    ("approver2", "Group CFO", "cfo@company.com", "approver2", "Finance", 50000),
-                    ("approver3", "Group CEO", "ceo@company.com", "approver3", "Executive", 100000),
-                    ("approver4", "Group MD", "md@company.com", "approver4", "Executive", 200000),
                     # Procurement
                     ("procurement1", "Procurement Officer", "procurement@company.com", "procurement", "Procurement", 0),
                 ]
@@ -2205,417 +2612,14 @@ def not_found(error):
 
 @app.errorhandler(500)
 def internal_error(error):
+    # Log the error
+    print(f"❌ Server Error: {error}")
     return render_template("error.html",
                          error_code=500,
                          error_message="Internal Server Error",
-                         error_description="Something went wrong on our end.",
+                         error_description="Something went wrong on our end. Our team has been notified.",
                          datetime=datetime), 500
 
-@app.route("/procurement/dashboard")
-@login_required
-@role_required("procurement", "superadmin")
-def procurement_dashboard():
-    try:
-        with db() as conn:
-            # 1. KPI DATA
-            kpi = conn.execute("""
-                SELECT
-                    COUNT(*) AS total_approved,
-                    SUM(CASE WHEN procurement_received_date IS NULL THEN 1 ELSE 0 END) AS pending_receive,
-                    SUM(CASE WHEN procurement_received_date IS NOT NULL THEN 1 ELSE 0 END) AS received_this_month,
-                    COALESCE(AVG(
-                        julianday(procurement_received_date) - julianday(created_at)
-                    ), 2.5) AS avg_processing_time
-                FROM pr
-                WHERE status='APPROVED'
-            """).fetchone()
-
-            # Convert to dict with proper values
-            kpi_dict = {
-                'total_approved': kpi['total_approved'] if kpi and kpi['total_approved'] else 0,
-                'pending_receive': kpi['pending_receive'] if kpi and kpi['pending_receive'] else 0,
-                'received_this_month': kpi['received_this_month'] if kpi and kpi['received_this_month'] else 0,
-                'avg_processing_time': round(float(kpi['avg_processing_time']) if kpi and kpi['avg_processing_time'] else 2.5, 1),
-                'pending_value': 0,  # Will calculate below
-                'monthly_growth': 12,  # Example static value
-                'received_percentage': round((kpi['received_this_month'] / kpi['total_approved'] * 100) if kpi and kpi['total_approved'] and kpi['total_approved'] > 0 else 0, 1),
-                'time_reduction': 15  # Example static value
-            }
-
-            # Calculate pending value
-            pending_value = conn.execute("""
-                SELECT SUM(total_amount) as total
-                FROM pr
-                WHERE status='APPROVED' 
-                AND procurement_received_date IS NULL
-            """).fetchone()
-            kpi_dict['pending_value'] = pending_value['total'] if pending_value and pending_value['total'] else 0
-
-            # 2. ACTION REQUIRED PRs (Pending Receipt)
-            action_pr = conn.execute("""
-                SELECT 
-                    p.id,
-                    p.pr_no,
-                    p.department,
-                    p.vendor_name,
-                    p.total_amount,
-                    p.status,
-                    p.created_at,
-                    CAST(julianday('now') - julianday(p.created_at) AS INTEGER) as days_pending
-                FROM pr p
-                WHERE p.status='APPROVED'
-                AND p.procurement_received_date IS NULL
-                ORDER BY p.created_at ASC
-                LIMIT 20
-            """).fetchall()
-
-            # 3. RECENTLY RECEIVED PRs
-            recent_received = conn.execute("""
-                SELECT 
-                    p.id,
-                    p.pr_no,
-                    p.department,
-                    p.vendor_name,
-                    p.total_amount,
-                    p.procurement_received_date as received_at,
-                    u.full_name as received_by
-                FROM pr p
-                LEFT JOIN users u ON p.procurement_officer_id = u.id
-                WHERE p.status='APPROVED'
-                AND p.procurement_received_date IS NOT NULL
-                ORDER BY p.procurement_received_date DESC
-                LIMIT 10
-            """).fetchall()
-
-            # 4. VENDORS for dropdown
-            vendors = conn.execute("""
-                SELECT id, vendor_name, vendor_code
-                FROM vendors
-                WHERE is_active=1
-                ORDER BY vendor_name
-                LIMIT 50
-            """).fetchall()
-
-            # 5. CHART DATA - Monthly PR Volume (Last 6 Months)
-            # Get current month and year
-            current_date = datetime.now()
-            current_year = current_date.year
-            current_month = current_date.month
-            
-            monthly_data = []
-            monthly_labels = []
-            
-            # Generate last 6 months
-            for i in range(5, -1, -1):
-                target_month = current_month - i
-                target_year = current_year
-                
-                if target_month <= 0:
-                    target_month += 12
-                    target_year -= 1
-                
-                month_name = datetime(target_year, target_month, 1).strftime('%b')
-                monthly_labels.append(month_name)
-                
-                # Count PRs for this month
-                count = conn.execute("""
-                    SELECT COUNT(*) as count
-                    FROM pr
-                    WHERE strftime('%Y-%m', created_at) = ?
-                    AND status = 'APPROVED'
-                """, (f"{target_year:04d}-{target_month:02d}",)).fetchone()
-                
-                monthly_data.append(count['count'] if count else 0)
-
-            # 6. CHART DATA - Department Distribution
-            department_data = conn.execute("""
-                SELECT 
-                    department,
-                    COUNT(*) as count
-                FROM pr
-                WHERE status='APPROVED'
-                GROUP BY department
-                ORDER BY count DESC
-                LIMIT 8
-            """).fetchall()
-
-            # Prepare chart data structure
-            chart_data = {
-                'monthly_labels': monthly_labels,
-                'monthly_data': monthly_data,
-                'department_labels': [row['department'] for row in department_data],
-                'department_data': [row['count'] for row in department_data],
-                'quarterly_labels': ['Q1', 'Q2', 'Q3', 'Q4'],
-                'quarterly_data': [45, 60, 55, 70],  # Example data
-                'yearly_labels': [str(current_year-3), str(current_year-2), str(current_year-1), str(current_year)],
-                'yearly_data': [120, 150, 180, kpi_dict['total_approved'] or 50]  # Dynamic last year
-            }
-
-            return render_template(
-                "procurement_dashboard.html",
-                kpi=kpi_dict,
-                action_pr=action_pr,
-                recent_received=recent_received,
-                vendors=vendors,
-                chart_data=chart_data
-            )
-        
-    except Exception as e:
-        print(f"⚠️ Procurement dashboard error: {e}")
-        flash("Error loading procurement dashboard", "danger")
-        return redirect("/dashboard")
-
-
-@app.route("/api/procurement/bulk-receive", methods=["POST"])
-@login_required
-@role_required("procurement", "superadmin")
-def bulk_receive_prs():
-    """API untuk bulk receive multiple PRs"""
-    try:
-        data = request.get_json()
-        pr_ids = data.get('pr_ids', [])
-        receipt_date = data.get('receipt_date')
-        notes = data.get('notes', '')
-        
-        if not pr_ids:
-            return jsonify({"success": False, "error": "No PRs selected"}), 400
-        
-        with db() as conn:
-            for pr_id in pr_ids:
-                # Update each PR
-                conn.execute("""
-                    UPDATE pr SET
-                        procurement_received_date=?,
-                        procurement_officer_id=?,
-                        last_updated=?
-                    WHERE id=? AND status='APPROVED'
-                """, (
-                    receipt_date or datetime.now().isoformat(),
-                    session["user_id"],
-                    datetime.now().isoformat(),
-                    pr_id
-                ))
-                
-                # Get PR details for notification
-                pr = conn.execute("SELECT pr_no, created_by FROM pr WHERE id=?", (pr_id,)).fetchone()
-                if pr:
-                    # Notify requester
-                    create_notification(
-                        pr['created_by'],
-                        "PR Received by Procurement",
-                        f"Your PR {pr['pr_no']} has been received by procurement department.",
-                        "SUCCESS",
-                        pr_id
-                    )
-        
-        return jsonify({"success": True, "message": f"{len(pr_ids)} PRs marked as received"})
-        
-    except Exception as e:
-        print(f"⚠️ Bulk receive error: {e}")
-        return jsonify({"success": False, "error": str(e)}), 500
-
-
-@app.route("/api/procurement/receive/<int:pr_id>", methods=["POST"])
-@login_required
-@role_required("procurement", "superadmin")
-def receive_single_pr(pr_id):
-    """API untuk receive single PR"""
-    try:
-        with db() as conn:
-            # Update PR
-            conn.execute("""
-                UPDATE pr SET
-                    procurement_received_date=?,
-                    procurement_officer_id=?,
-                    last_updated=?
-                WHERE id=? AND status='APPROVED'
-            """, (
-                datetime.now().isoformat(),
-                session["user_id"],
-                datetime.now().isoformat(),
-                pr_id
-            ))
-            
-            # Get PR details for response
-            pr = conn.execute("SELECT pr_no FROM pr WHERE id=?", (pr_id,)).fetchone()
-            
-            # Notify requester
-            create_notification(
-                conn.execute("SELECT created_by FROM pr WHERE id=?", (pr_id,)).fetchone()['created_by'],
-                "PR Received by Procurement",
-                f"Your PR {pr['pr_no']} has been received by procurement department.",
-                "SUCCESS",
-                pr_id
-            )
-        
-        return jsonify({"success": True, "message": f"PR {pr['pr_no']} marked as received"})
-        
-    except Exception as e:
-        print(f"⚠️ Single receive error: {e}")
-        return jsonify({"success": False, "error": str(e)}), 500
-
-
-@app.route("/api/procurement/assign-vendor/<int:pr_id>", methods=["POST"])
-@login_required
-@role_required("procurement", "superadmin")
-def assign_vendor_to_pr(pr_id):
-    """API untuk assign vendor ke PR"""
-    try:
-        data = request.get_json()
-        vendor_id = data.get('vendor_id')
-        
-        if not vendor_id:
-            return jsonify({"success": False, "error": "Vendor ID is required"}), 400
-        
-        with db() as conn:
-            # Get vendor details
-            vendor = conn.execute("""
-                SELECT vendor_code, vendor_name 
-                FROM vendors 
-                WHERE id=? AND is_active=1
-            """, (vendor_id,)).fetchone()
-            
-            if not vendor:
-                return jsonify({"success": False, "error": "Vendor not found"}), 404
-            
-            # Update PR with vendor info
-            conn.execute("""
-                UPDATE pr SET
-                    vendor_code=?,
-                    vendor_name=?,
-                    last_updated=?
-                WHERE id=?
-            """, (
-                vendor['vendor_code'],
-                vendor['vendor_name'],
-                datetime.now().isoformat(),
-                pr_id
-            ))
-            
-            # Get PR details for response
-            pr = conn.execute("SELECT pr_no FROM pr WHERE id=?", (pr_id,)).fetchone()
-            
-            # Notify requester
-            pr_creator = conn.execute("SELECT created_by FROM pr WHERE id=?", (pr_id,)).fetchone()
-            if pr_creator:
-                create_notification(
-                    pr_creator['created_by'],
-                    "Vendor Assigned",
-                    f"Vendor {vendor['vendor_name']} has been assigned to your PR {pr['pr_no']}.",
-                    "INFO",
-                    pr_id
-                )
-        
-        return jsonify({"success": True, "message": f"Vendor {vendor['vendor_name']} assigned to PR"})
-        
-    except Exception as e:
-        print(f"⚠️ Assign vendor error: {e}")
-        return jsonify({"success": False, "error": str(e)}), 500
-
-
-@app.route("/api/charts/pr-volume")
-@login_required
-def get_pr_volume_chart():
-    """API untuk chart data dengan range berbeda"""
-    try:
-        range_type = request.args.get('range', 'monthly')
-        current_year = datetime.now().year
-        
-        with db() as conn:
-            if range_type == 'monthly':
-                # Last 6 months
-                data = []
-                labels = []
-                
-                for i in range(5, -1, -1):
-                    target_month = datetime.now().month - i
-                    target_year = current_year
-                    
-                    if target_month <= 0:
-                        target_month += 12
-                        target_year -= 1
-                    
-                    month_name = datetime(target_year, target_month, 1).strftime('%b')
-                    labels.append(month_name)
-                    
-                    count = conn.execute("""
-                        SELECT COUNT(*) as count
-                        FROM pr
-                        WHERE strftime('%Y-%m', created_at) = ?
-                        AND status = 'APPROVED'
-                    """, (f"{target_year:04d}-{target_month:02d}",)).fetchone()
-                    
-                    data.append(count['count'] if count else 0)
-                
-                return jsonify({
-                    'labels': labels,
-                    'data': data,
-                    'range': 'monthly'
-                })
-                
-            elif range_type == 'quarterly':
-                # Last 4 quarters
-                data = []
-                labels = []
-                
-                for i in range(3, -1, -1):
-                    quarter = (datetime.now().month - 1) // 3 - i
-                    year_offset = quarter // 4
-                    quarter = quarter % 4
-                    
-                    target_year = current_year + year_offset
-                    labels.append(f'Q{quarter+1} {target_year}')
-                    
-                    start_month = quarter * 3 + 1
-                    end_month = start_month + 2
-                    
-                    count = conn.execute("""
-                        SELECT COUNT(*) as count
-                        FROM pr
-                        WHERE strftime('%Y-%m', created_at) BETWEEN ? AND ?
-                        AND status = 'APPROVED'
-                    """, (
-                        f"{target_year:04d}-{start_month:02d}",
-                        f"{target_year:04d}-{end_month:02d}"
-                    )).fetchone()
-                    
-                    data.append(count['count'] if count else 0)
-                
-                return jsonify({
-                    'labels': labels,
-                    'data': data,
-                    'range': 'quarterly'
-                })
-                
-            elif range_type == 'yearly':
-                # Last 4 years
-                data = []
-                labels = []
-                
-                for i in range(3, -1, -1):
-                    target_year = current_year - i
-                    labels.append(str(target_year))
-                    
-                    count = conn.execute("""
-                        SELECT COUNT(*) as count
-                        FROM pr
-                        WHERE strftime('%Y', created_at) = ?
-                        AND status = 'APPROVED'
-                    """, (str(target_year),)).fetchone()
-                    
-                    data.append(count['count'] if count else 0)
-                
-                return jsonify({
-                    'labels': labels,
-                    'data': data,
-                    'range': 'yearly'
-                })
-            else:
-                return jsonify({"error": "Invalid range type"}), 400
-                
-    except Exception as e:
-        print(f"⚠️ Chart data error: {e}")
-        return jsonify({"error": str(e)}), 500
 # ==================================================
 # RENDER / GUNICORN SAFE STARTUP
 # ==================================================
@@ -2628,3 +2632,33 @@ def _render_startup_guard():
         init_db()
         create_initial_users()
         app._db_initialized = True
+
+# ==================================================
+# HEALTH CHECK ENDPOINT
+# ==================================================
+@app.route("/health")
+def health_check():
+    """Health check endpoint for monitoring"""
+    try:
+        with db() as conn:
+            # Test database connection
+            conn.execute("SELECT 1").fetchone()
+        
+        return jsonify({
+            "status": "healthy",
+            "timestamp": datetime.now().isoformat(),
+            "database": "connected"
+        }), 200
+    except Exception as e:
+        return jsonify({
+            "status": "unhealthy",
+            "timestamp": datetime.now().isoformat(),
+            "error": str(e)
+        }), 500
+
+# ==================================================
+# MAIN ENTRY POINT
+# ==================================================
+if __name__ == "__main__":
+    port = int(os.environ.get("PORT", 5000))
+    app.run(host="0.0.0.0", port=port, debug=True)
